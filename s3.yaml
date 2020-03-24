@@ -17,6 +17,7 @@ Resources:
       BucketName: !Sub ${AWS::AccountId}-logs-do-not-delete
       LoggingConfiguration:
         DestinationBucketName: !Sub ${AWS::AccountId}-logs-do-not-delete
+
   cloudtrailBucketPolicy:
     Type: "AWS::S3::BucketPolicy"
     Properties:
@@ -39,6 +40,7 @@ Resources:
             Condition:
               StringEquals:
                 s3:x-amz-acl: 'bucket-owner-full-control'
+
   accountTrail:
     DependsOn:
       - cloudtrailBucket
@@ -54,6 +56,7 @@ Resources:
       IsLogging: true
       S3BucketName: !Ref cloudtrailBucket
       TrailName: !Sub ${AWS::AccountId}-trail-do-not-delete
+
   encryptedBucket:
     Type: "AWS::S3::Bucket"
     Properties:
@@ -69,6 +72,7 @@ Resources:
         BlockPublicPolicy: true
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
+
   encryptedBucketRole:
     Type: "AWS::IAM::Role"
     Properties:
@@ -83,7 +87,8 @@ Resources:
       Description: Minimum privilege role, allowing read & write to s3 bucket
       MaxSessionDuration: 3600
       RoleName: LimitedS3User
-  rolePolicy:
+
+  bucketRolePolicy:
     Type: "AWS::IAM::Policy"
     Properties:
       PolicyDocument: 
@@ -93,6 +98,10 @@ Resources:
             Effect: Allow
             Action: s3:ListBucket
             Resource: !GetAtt encryptedBucket.Arn
+          - Sid: ListBucketsInAccountInConsole
+            Effect: Allow
+            Action: s3:ListAllMyBuckets
+            Resource: arn:aws:s3:::* 
           - Sid: AllowReadWrite
             Effect: Allow
             Action: 
@@ -103,8 +112,62 @@ Resources:
       Roles:
         - !Ref encryptedBucketRole
 
-  
+  lambdaTestRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument: 
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowAssumeRole
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Description: Allow lambda to do live unit testing
+      RoleName: resourceTester
+
+  lambdaTestPolicy:
+    Type: "AWS::IAM::Policy"
+    Properties:
+      PolicyDocument: 
+        Version: "2012-10-17"
+        Statement:
+          - Sid: testBuckets
+            Effect: Allow
+            Action: 
+            - s3:GetBucketLogging
+            - s3:GetEncryptionConfiguration
+            Resource: 
+            - !GetAtt cloudtrailBucket.Arn
+            - !GetAtt encryptedBucket.Arn
+          - Sid: testTrail
+            Effect: Allow
+            Action: 
+            - cloudtrail:GetTrailStatus
+            - cloudtrail:GetEventSelectors
+            Resource: !GetAtt accountTrail.Arn  
+          - Sid: testPolicy
+            Effect: Allow
+            Action: iam:SimulatePrincipalPolicy
+            Resource: !GetAtt encryptedBucketRole.Arn
+          - Sid: readCF
+            Effect: Allow
+            Action: cloudformation:DescribeStacks
+            Resource: '*'
+      PolicyName: testAccess
+      Roles:
+        - !Ref lambdaTestRole
+
 Outputs: 
-  cloudtrailBucketName:
-    Description: name of cloudtrail bucket 
+  logBucket:
+    Description: name for logging bucket 
     Value: !Ref cloudtrailBucket
+  storageBucket:
+    Description: name for storage bucket
+    Value: !Ref encryptedBucket
+  accountTrail:
+    Description: name for account cloudtrail 
+    Value: !Ref accountTrail
+  s3Role:
+    Description: arn for s3 role
+    Value: !GetAtt encryptedBucketRole.Arn

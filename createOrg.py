@@ -1,5 +1,6 @@
 import boto3
 import time
+import uuid
 
 def createMasterOrg():
   org = boto3.client('organizations')
@@ -9,7 +10,8 @@ def createMasterOrg():
   # )
   
   listRoots = org.list_roots()
-
+  
+  print(listRoots['Roots'][0]['Id'])
   return listRoots['Roots'][0]['Id']
 
 def createOrgUnit(rootId, ouName):
@@ -19,11 +21,11 @@ def createOrgUnit(rootId, ouName):
     ParentId = rootId,
     Name = ouName
   )
-
+  
+  print(ouResponse['OrganizationalUnit']['Id'])
   return ouResponse['OrganizationalUnit']['Id']
 
 def createAccount(accountEmail, accountName):
-#  accountId = 'None'
   org = boto3.client('organizations')
 
   accountResponse = org.create_account(
@@ -33,34 +35,20 @@ def createAccount(accountEmail, accountName):
     IamUserAccessToBilling='DENY'
 
   )
+  print(accountResponse)
 
-#  requestId = accountResponse['CreateAccountStatus']['Id']
-
-#  accountStatus = org.describe_create_account_status(
-#    CreateAccountRequestId=requestId
-#  )
-
-#  accountId = accountStatus['CreateAccountStatus']['AccountId']
-  
-#  while(accountId is None):
-#    accountStatus = org.describe_create_account_status(
-#      CreateAccountRequestId=requestId
-#    )
-
-#    accountId = accountStatus['CreateAccountStatus']['AccountId']
-
-#  return accountId
-
-progress = accountResponse['CreateAccountStatus']['State']
-  test = 'true'
-  while(test):
-    if(progress == 'IN_PROGRESS'):
-      time.sleep(2)
-      print(progress)
-    else:
-      accountId= accountResponse['CreateAccountStatus']['AccountId']
+  requestId = accountResponse['CreateAccountStatus']['Id']
+  while True:
+    accountStatus = org.describe_create_account_status(
+      CreateAccountRequestId=requestId
+    )
+    if accountStatus['CreateAccountStatus']['State'] == 'IN_PROGRESS':
+      time.sleep(10)
+    elif accountStatus['CreateAccountStatus']['State'] == 'SUCCEEDED':
+      accountId= accountStatus['CreateAccountStatus']['AccountId']
       print(accountId)
-      test = false
+      return accountId
+      break 
 
 def moveAccount(newAccountId, rootId, destinationId):
   org = boto3.client('organizations')
@@ -70,27 +58,132 @@ def moveAccount(newAccountId, rootId, destinationId):
     SourceParentId = rootId,
     DestinationParentId = destinationId
   )
-
-def respond_cloudformation(event, status):
-    responseBody = {
-        'Status': status,
-        'PhysicalResourceId': event['ServiceToken'],
-        'StackId': event['StackId'],
-        'RequestId': event['RequestId'],
-        'LogicalResourceId': event['LogicalResourceId']
+  
+def createStackSets():
+  cf = boto3.client('cloudformation')
+  
+  baselineStackName = "account-baseline-" + str(uuid.uuid4())  
+  
+  baselineStackResponse = cf.create_stack_set(
+    StackSetName = baselineStackName,
+    Description = 'Baseline for new accounts',
+    TemplateURL='https://testing-org-lambda.s3.amazonaws.com/lz-baseline.yml',
+    Capabilities= [
+      'CAPABILITY_NAMED_IAM'
+    ],
+    PermissionModel='SERVICE_MANAGED',
+    AutoDeployment={
+      'Enabled': True,
+      'RetainStacksOnAccountRemoval': False
     }
+  )
+  
+  baselineStackStatus = cf.list_stack_sets()['Summaries'][0]['Status']
+  print("Baseline StackSet is: " + baselineStackStatus)
+  
+  loggingStackName = "logging-" + str(uuid.uuid4())  
+  
+  loggingStackResponse = cf.create_stack_set(
+    StackSetName = loggingStackName,
+    Description = 'Baseline for centralized logging',
+    TemplateURL='https://testing-org-lambda.s3.amazonaws.com/lz-logging.yml',
+    PermissionModel='SERVICE_MANAGED',
+    AutoDeployment={
+      'Enabled': True,
+      'RetainStacksOnAccountRemoval': False
+    }
+  )
+  
+  loggingStackStatus = cf.list_stack_sets()['Summaries'][1]['Status']
+  print("Logging StackSet is: " + loggingStackStatus)
+    
+  return(baselineStackName,loggingStackName)
 
-def delete_respond_cloudformation(event, status):
+  
+  
+def deployLoggingStack(stackName, ou):
+  cf = boto3.client('cloudformation')
+  deployLogResponse = cf.create_stack_instances(
+    StackSetName=stackName,
+    DeploymentTargets={
+      'OrganizationalUnitIds': [
+        ou
+      ]
+    },
+    Regions=[
+      'us-east-1'
+    ]
+  )
+  
+  loggingOpId = deployLogResponse['OperationId']
+  
+  while True:
+    deployLogStatus = cf.describe_stack_set_operation(
+      StackSetName=stackName,
+      OperationId=loggingOpId
+    )
+    if deployLogStatus['StackSetOperation']['Status'] == 'RUNNING':
+      time.sleep(10)
+      
+    if deployLogStatus['StackSetOperation']['Status'] == 'SUCCEEDED':
+      print("Success! Log StackSet deployed.")
+      break
+    
+
+
+def deployBaselineStack(stackName, ou):
+  cf = boto3.client('cloudformation')
+  deployBaseResponse = cf.create_stack_instances(
+    StackSetName=stackName,
+    DeploymentTargets={
+      'OrganizationalUnitIds': [
+        ou
+      ]
+    },
+    Regions=[
+      'us-east-1'
+    ]
+  )
+  
+  baselineOpId = deployBaseResponse['OperationId']
+  
+  while True:
+    deployBaseStatus = cf.describe_stack_set_operation(
+      StackSetName=stackName,
+      OperationId=baselineOpId
+    )
+    if deployBaseStatus['StackSetOperation']['Status'] == 'RUNNING':
+      time.sleep(10)
+      
+    if deployBaseStatus['StackSetOperation']['Status'] == 'SUCCEEDED':
+      print("Success! Base StackSet deployed.")
+      break
+    
+
+def respond_cloudformation(event, status, data=None):
     responseBody = {
-        'Status': status,
-        'PhysicalResourceId': event['ServiceToken'],
-        'StackId': event['StackId'],
-        'RequestId': event['RequestId'],
-        'LogicalResourceId': event['LogicalResourceId']
+      'Status': status,
+      'Reason': 'just work guy',
+      'StackId': event['StackId'],
+      'RequestId': event['RequestId'],
+      'LogicalResourceId': event['LogicalResourceId'], 
+      'Data': data
+    }
+    print(responseBody)
+
+def delete_respond_cloudformation(event, status, data=None):
+    responseBody = {
+      'Status': status,
+      'Reason': 'just work guy',
+      'StackId': event['StackId'],
+      'RequestId': event['RequestId'],
+      'LogicalResourceId': event['LogicalResourceId'], 
+      'Data': data
     }
 
     lambda_client = get_client('lambda')
-    lambda_client.delete_function(FunctionName='createOrg')
+    lambda_client.delete_function(FunctionName='createAccount')
+    print('deleted')
 
 
 def lambda_handler(event, context):
@@ -113,11 +206,14 @@ def lambda_handler(event, context):
     moveAccount(devAccountId, masterId, workloadId)
     moveAccount(stagingAccountId, masterId, workloadId)
     moveAccount(prodAccountId, masterId, workloadId)
-
-    respond_cloudformation(event, "SUCCESS")
+    
+    (baselineStackName,loggingStackName) = createStackSets()
+    deployLoggingStack(loggingStackName, securityId)
+    deployBaselineStack(baselineStackName, workloadId)
+    
+    respond_cloudformation(event, "SUCCESS", {})
 
   if(event['RequestType'] == 'Update'):
-    respond_cloudformation(event, "SUCCESS")
+    respond_cloudformation(event, "SUCCESS", {})
   elif(event['RequestType'] == 'Delete'):
-    delete_respond_cloudformation(event, "SUCCESS")
-
+    delete_respond_cloudformation(event, "SUCCESS", {})

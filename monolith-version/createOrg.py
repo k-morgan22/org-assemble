@@ -2,20 +2,19 @@ import boto3
 import time
 import uuid
 
-def createMasterOrg():
-  org = boto3.client('organizations')
+org = boto3.client('organizations')
+cf = boto3.client('cloudformation')
+lambdaClient = boto3.client('lambda')
 
-  # masterResponse = org.create_organization(
-  #   FeatureSet = 'ALL'
-  # )
+
+
+def grabMasterOrg():
   
   listRoots = org.list_roots()
   
-  print(listRoots['Roots'][0]['Id'])
   return listRoots['Roots'][0]['Id']
 
 def createOrgUnit(rootId, ouName):
-  org = boto3.client('organizations')
 
   ouResponse = org.create_organizational_unit(
     ParentId = rootId,
@@ -26,7 +25,6 @@ def createOrgUnit(rootId, ouName):
   return ouResponse['OrganizationalUnit']['Id']
 
 def createAccount(accountEmail, accountName):
-  org = boto3.client('organizations')
 
   accountResponse = org.create_account(
     Email=accountEmail,
@@ -51,7 +49,6 @@ def createAccount(accountEmail, accountName):
       break 
 
 def moveAccount(newAccountId, rootId, destinationId):
-  org = boto3.client('organizations')
 
   moveResponse = org.move_account(
     AccountId = newAccountId,
@@ -60,7 +57,6 @@ def moveAccount(newAccountId, rootId, destinationId):
   )
   
 def createStackSets():
-  cf = boto3.client('cloudformation')
   
   baselineStackName = "account-baseline-" + str(uuid.uuid4())  
   
@@ -78,6 +74,7 @@ def createStackSets():
     }
   )
   
+
   baselineStackStatus = cf.list_stack_sets()['Summaries'][0]['Status']
   print("Baseline StackSet is: " + baselineStackStatus)
   
@@ -102,7 +99,6 @@ def createStackSets():
   
   
 def deployLoggingStack(stackName, ou):
-  cf = boto3.client('cloudformation')
   deployLogResponse = cf.create_stack_instances(
     StackSetName=stackName,
     DeploymentTargets={
@@ -132,7 +128,6 @@ def deployLoggingStack(stackName, ou):
 
 
 def deployBaselineStack(stackName, ou):
-  cf = boto3.client('cloudformation')
   deployBaseResponse = cf.create_stack_instances(
     StackSetName=stackName,
     DeploymentTargets={
@@ -181,9 +176,10 @@ def delete_respond_cloudformation(event, status, data=None):
       'Data': data
     }
 
-    lambda_client = get_client('lambda')
-    lambda_client.delete_function(FunctionName='createAccount')
-    print('deleted')
+    deleteResponse = lambdaClient.delete_function(
+      FunctionName='createOrg'
+    )
+    print(deleteResponse)
 
 
 def lambda_handler(event, context):
@@ -194,22 +190,44 @@ def lambda_handler(event, context):
 
 
   if(event['RequestType'] == 'Create'):
-    masterId = createMasterOrg()
+    print('Testing email')
+    print(loggingAccountEmail)
+    masterId = grabMasterOrg()
+    print('Grabbed org root id')
+    print(masterId)
     securityId = createOrgUnit(masterId, 'Security')
     workloadId = createOrgUnit(masterId, 'Workloads')
+    print('Created OUs')
+    print(securityId)
+    print(workloadId)
     loggingAccountId = createAccount(loggingAccountEmail, 'Logging')
+    print('Created logging account')
+    print(loggingAccountId)
     devAccountId = createAccount(devAccountEmail, 'Dev')
+    print('Created dev account')
+    print(devAccountId)
     stagingAccountId = createAccount(stagingAccountEmail, 'Staging')
+    print('Created staging account')
+    print(stagingAccountId)
     prodAccountId = createAccount(prodAccountEmail, 'Prod')
+    print('Created prod account ')
+    print(prodAccountId)
 
     moveAccount(loggingAccountId, masterId, securityId)
     moveAccount(devAccountId, masterId, workloadId)
     moveAccount(stagingAccountId, masterId, workloadId)
     moveAccount(prodAccountId, masterId, workloadId)
+    print('Moved accounts into correct OUs')
     
     (baselineStackName,loggingStackName) = createStackSets()
+    print('Created baseline stack and logging stacks')
+    print(baselineStackName)
+    print(loggingStackName)
     deployLoggingStack(loggingStackName, securityId)
+    print('deployed logging stack')
     deployBaselineStack(baselineStackName, workloadId)
+    print('deployed baseline stacks')
+    
     
     respond_cloudformation(event, "SUCCESS", {})
 

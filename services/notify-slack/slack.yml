@@ -1,0 +1,92 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Create SNS topic for slack chatbot & chatOps
+  
+Parameters:
+  SlackWorkspaceId:
+    Description: ID of the slack workspace authorized with AWS Chatbot
+    Type: String
+    MinLength: 6
+    MaxLength: 64 
+  SlackChannelId:
+    Description: ID of the slack channel
+    Type: String
+    MinLength: 6
+    MaxLength: 64 
+
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+    - Label: 
+        default: Slack -- Chatbot Authorization Details
+      Parameters:
+      - SlackWorkspaceId
+      - SlackChannelId
+    
+    ParameterLabels:
+      SlackWorkspaceId:
+        default: Slack Workspace Id 
+      SlackChannelId:
+        default: Slack Channel Id
+
+  
+Resources:
+  SlackTopic:
+    Type: "AWS::SNS::Topic"
+
+  ChatbotRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument: 
+        Version: "2012-10-17"
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: chatbot.amazonaws.com
+          Action: sts:AssumeRole
+      Description: Allow Chatbot to post in slack
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+      MaxSessionDuration: 3600
+      RoleName: chatbotPermissions
+
+  Chatbot:
+    Type: "AWS::Chatbot::SlackChannelConfiguration"
+    Properties:
+      SlackWorkspaceId: !Ref SlackWorkspaceId
+      SlackChannelId: !Ref SlackChannelId
+      ConfigurationName: lambda-destinations-notification
+      IamRoleArn: !GetAtt ChatbotRole.Arn
+      SnsTopicArns:
+        - !Ref SlackTopic
+      LoggingLevel: NONE
+
+
+  # ChatbotPolicy:
+  #   Type: "AWS::IAM::Policy"
+  #   Properties:
+  #     Groups:
+  #       - String
+  #     PolicyDocument: Json #required
+  #     PolicyName: String #required
+  #     Roles:
+  #       - String
+  #     Users:
+  #       - String
+  
+
+  # TopicPolicy:
+  #   Type: "AWS::SNS::TopicPolicy"
+  #   Properties:
+  #     PolicyDocument: Json #required
+  #     Topics: #required
+  #       - String
+  
+  
+Outputs:
+  SlackTopicArn:
+    Description: Topic Arn 
+    Value: !Ref SlackTopic
+  ChatbotArn:
+    Description: Chatbot Arn
+    Value: !Ref Chatbot 

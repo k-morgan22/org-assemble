@@ -1,0 +1,69 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: create sqs queues, lambda functions, lambda roles, and policies to run code
+  
+Parameters:
+  LoggingAccountEmail:
+    Description: Email address used to create a centralized logging account
+    Type: String
+    MinLength: 6
+    MaxLength: 64 
+    AllowedPattern: ^[_A-Za-z0-9-\+\.]+(\.[_A-Za-z0-9-]+)*@[A-Za-z0-9-]+(\.[A-Za-z0-9]+)*(\.[A-Za-z]{2,})$
+    ConstraintDescription: Account Email can contain only ASCII characters. This must be in the format of something@email.com
+
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+    - Label: 
+        default: Organization Security OU Configuration 
+      Parameters:
+      - LoggingAccountEmail
+    
+    ParameterLabels:
+      LoggingAccountEmail:
+        default: Log Archive Account Email Address
+
+Resources:
+  LambdaAdminRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument: 
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+      RoleName: testLambda
+  
+  LambdaOrgFunction:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Code: 
+        S3Bucket: testing-org-lambda
+        S3Key: testLambda.zip
+      Handler: testLambda.lambda_handler
+      Role: !GetAtt LambdaAdminRole.Arn
+      Runtime: python3.7
+      FunctionName: testLambda
+      Timeout: 60
+  
+  FirstQueue:
+    Type: "AWS::SQS::Queue"
+    Properties:
+      ContentBasedDeduplication: false
+      FifoQueue: true
+      MaximumMessageSize: 256
+      MessageRetentionPeriod: 4
+      QueueName: ouQueue
+      VisibilityTimeout: 300
+  
+
+
+  TriggerOrgLambda:
+    Type: "Custom::TriggerOrgLambda"
+    Properties:
+      ServiceToken: !GetAtt LambdaOrgFunction.Arn
+      LoggingEmail: !Ref LoggingAccountEmail

@@ -38,32 +38,177 @@ Resources:
         - arn:aws:iam::aws:policy/AdministratorAccess
       RoleName: testLambda
   
-  LambdaOrgFunction:
+  ProducerFunction:
     Type: "AWS::Lambda::Function"
     Properties:
       Code: 
         S3Bucket: testing-org-lambda
-        S3Key: testLambda.zip
-      Handler: testLambda.lambda_handler
+        S3Key: producer.zip
+      Handler: producer.lambda_handler
       Role: !GetAtt LambdaAdminRole.Arn
       Runtime: python3.7
-      FunctionName: testLambda
-      Timeout: 60
+      FunctionName: producer
+      Timeout: 30
+
+  CreateOuFunction:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Code: 
+        S3Bucket: testing-org-lambda
+        S3Key: createOu.zip
+      Handler: createOu.lambda_handler
+      Role: !GetAtt LambdaAdminRole.Arn
+      Runtime: python3.7
+      FunctionName: createOu
+      Timeout: 30
+
+  CreateAccountFunction:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Code: 
+        S3Bucket: testing-org-lambda
+        S3Key: createAccount.zip
+      Handler: createAccount.lambda_handler
+      Role: !GetAtt LambdaAdminRole.Arn
+      Runtime: python3.7
+      FunctionName: createAccount
+      Timeout: 30
+
+  MoveAccountFunction:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Code: 
+        S3Bucket: testing-org-lambda
+        S3Key: moveAccount.zip
+      Handler: moveAccount.lambda_handler
+      Role: !GetAtt LambdaAdminRole.Arn
+      Runtime: python3.7
+      FunctionName: moveAccount
+      Timeout: 30
+
+  StacksetFunction:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Code: 
+        S3Bucket: testing-org-lambda
+        S3Key: stackset.zip
+      Handler: stackset.lambda_handler
+      Role: !GetAtt LambdaAdminRole.Arn
+      Runtime: python3.7
+      FunctionName: stackset
+      Timeout: 30
+
+  UnitTestFunction:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Code: 
+        S3Bucket: testing-org-lambda
+        S3Key: unitTest.zip
+      Handler: unitTest.lambda_handler
+      Role: !GetAtt LambdaAdminRole.Arn
+      Runtime: python3.7
+      FunctionName: unitTest
+      Timeout: 30
+  
+  DeadLetterQueue:
+    Type: "AWS::SQS::Queue"
+    Properties:
+      ContentBasedDeduplication: false
+      FifoQueue: true
+      MessageRetentionPeriod: 1209600
   
   FirstQueue:
     Type: "AWS::SQS::Queue"
     Properties:
       ContentBasedDeduplication: false
       FifoQueue: true
-      MaximumMessageSize: 256
-      MessageRetentionPeriod: 4
-      QueueName: ouQueue
-      VisibilityTimeout: 300
-  
+      ReceiveMessageWaitTimeSeconds: 20
+      RedrivePolicy:
+        deadletterTargetArn: !GetAtt DeadLetterQueue.Arn
+        maxReceiveCount: 5
+      VisibilityTimeout: 150
 
-
-  TriggerOrgLambda:
-    Type: "Custom::TriggerOrgLambda"
+  SecondQueue:
+    Type: "AWS::SQS::Queue"
     Properties:
-      ServiceToken: !GetAtt LambdaOrgFunction.Arn
+      ContentBasedDeduplication: false
+      FifoQueue: true
+      ReceiveMessageWaitTimeSeconds: 20
+      RedrivePolicy:
+        deadletterTargetArn: !GetAtt DeadLetterQueue.Arn
+        maxReceiveCount: 5
+      VisibilityTimeout: 150
+
+  ThirdQueue:
+    Type: "AWS::SQS::Queue"
+    Properties:
+      ContentBasedDeduplication: false
+      FifoQueue: true
+      ReceiveMessageWaitTimeSeconds: 20
+      RedrivePolicy:
+        deadletterTargetArn: !GetAtt DeadLetterQueue.Arn
+        maxReceiveCount: 5
+      VisibilityTimeout: 150
+
+  FourthQueue:
+    Type: "AWS::SQS::Queue"
+    Properties:
+      ContentBasedDeduplication: false
+      FifoQueue: true
+      ReceiveMessageWaitTimeSeconds: 20
+      RedrivePolicy:
+        deadletterTargetArn: !GetAtt DeadLetterQueue.Arn
+        maxReceiveCount: 5
+      VisibilityTimeout: 150
+
+  FifthQueue:
+    Type: "AWS::SQS::Queue"
+    Properties:
+      ContentBasedDeduplication: false
+      FifoQueue: true
+      ReceiveMessageWaitTimeSeconds: 20
+      RedrivePolicy:
+        deadletterTargetArn: !GetAtt DeadLetterQueue.Arn
+        maxReceiveCount: 5
+      VisibilityTimeout: 150
+
+  TriggerFirstFunction:
+    Type: "AWS::Lambda::EventSourceMapping"
+    Properties:
+      EventSourceArn: !GetAtt FirstQueue.Arn
+      FunctionName: !Ref CreateOuFunction
+
+  TriggerSecondFunction:
+    Type: "AWS::Lambda::EventSourceMapping"
+    Properties:
+      EventSourceArn: !GetAtt SecondQueue.Arn
+      FunctionName: !Ref CreateAccountFunction
+
+  TriggerThirdFunction:
+    Type: "AWS::Lambda::EventSourceMapping"
+    Properties:
+      EventSourceArn: !GetAtt ThirdQueue.Arn
+      FunctionName: !Ref MoveAccountFunction
+
+  TriggerFourthFunction:
+    Type: "AWS::Lambda::EventSourceMapping"
+    Properties:
+      BatchSize: 1
+      EventSourceArn: !GetAtt FourthQueue.Arn
+      FunctionName: !Ref StacksetFunction
+
+  TriggerFifthFunction:
+    Type: "AWS::Lambda::EventSourceMapping"
+    Properties:
+      EventSourceArn: !GetAtt FifthQueue.Arn
+      FunctionName: !Ref UnitTestFunction
+
+
+  TriggerProducer:
+    Type: "Custom::TriggerProducer"
+    Properties:
+      ServiceToken: !GetAtt ProducerFunction.Arn
       LoggingEmail: !Ref LoggingAccountEmail
+  
+# Outputs:
+  

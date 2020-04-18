@@ -1,10 +1,12 @@
 import json
 import boto3
 from botocore.vendored import requests
+import uuid
 
 
 lambdaClient = boto3.client('lambda')
 sqs = boto3.client('sqs')
+ssm = boto3.client('ssm')
 
 
 
@@ -49,37 +51,50 @@ def deleteResponse(event, context):
 def lambda_handler(event, context):
     lambdaArn = event['ResourceProperties']['ServiceToken']
     loggingEmail = event['ResourceProperties']['LoggingEmail']
+    webhookUrl = event['ResourceProperties']['SlackWebHook']
     
     
     if(event['RequestType'] == 'Create'):
         try:
-            initialQueue = sqs.get_queue_url(
-                QueueName = ''
+
+            randomName = 'slackDestinationsUrl-'+ str(uuid.uuid4())
+            putParameter = ssm.put_parameter(
+                Name = randomName,
+                Description = 'Url for slack destinations reports',
+                Value = webhookUrl,
+                Type = 'SecureString'
             )
 
-            payload = { 'LoggingEmail': loggingEmail }
+            # initialQueue = sqs.get_queue_url(
+            #     QueueName = ''
+            # )
+
+            # payload = { 'LoggingEmail': loggingEmail }
             
-            batchResponse = sqs.send_message_batch(
-                QueueUrl = initialQueue,
-                Entries = [
-                    {
-                        'Id': '1',
-                        'MessageBody': JSON.stringify(payload)
-                    },
-                    {
-                        'Id': '2',
-                        'MessageBody': JSON.stringify(payload)
-                    }
-                ]
-            )
+            # batchResponse = sqs.send_message_batch(
+            #     QueueUrl = initialQueue,
+            #     Entries = [
+            #         {
+            #             'Id': '1',
+            #             'MessageBody': JSON.stringify(payload)
+            #         },
+            #         {
+            #             'Id': '2',
+            #             'MessageBody': JSON.stringify(payload)
+            #         }
+            #     ]
+            # )
 
             sendResponse(event, context, "SUCCESS", {})
         except:
-            print("failed")
+            print("failed to run program ")
             
             
     if(event['RequestType'] == 'Update'):
-        sendResponse(event, context, "SUCCESS", {})
+        try:
+            sendResponse(event, context, "SUCCESS", {})
+        except:
+            print("Could not initiate update response")
     elif(event['RequestType'] == 'Delete'):
         try:
             deleteResponse(event, context)

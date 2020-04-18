@@ -9,6 +9,11 @@ Parameters:
     MaxLength: 64 
     AllowedPattern: ^[_A-Za-z0-9-\+\.]+(\.[_A-Za-z0-9-]+)*@[A-Za-z0-9-]+(\.[A-Za-z0-9]+)*(\.[A-Za-z]{2,})$
     ConstraintDescription: Account Email can contain only ASCII characters. This must be in the format of something@email.com
+  SlackWebHookUrl:
+    Description: Incoming WebHooks Integration for slack channel messaging 
+    Type: String
+
+
 
 
 Metadata:
@@ -18,10 +23,16 @@ Metadata:
         default: Organization Security OU Configuration 
       Parameters:
       - LoggingAccountEmail
+    - Label:
+        default: Slack Channel Messaging Configuration 
+      Parameters:
+      - SlackWebHookUrl
     
     ParameterLabels:
       LoggingAccountEmail:
         default: Log Archive Account Email Address
+      SlackWebHookUrl:
+        default: Slack WebHook Url
 
 Resources:
   LambdaAdminRole:
@@ -203,12 +214,53 @@ Resources:
       EventSourceArn: !GetAtt FifthQueue.Arn
       FunctionName: !Ref UnitTestFunction
 
+  SlackFunction:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Code: 
+        S3Bucket: testing-org-lambda
+        S3Key: slack.zip
+      Handler: slack.lambda_handler
+      Role: !GetAtt LambdaAdminRole.Arn
+      Runtime: python3.7
+      FunctionName: slack
+      Timeout: 30
+  
+  SlackTopic:
+    Type: "AWS::SNS::Topic"
+    Properties:
+      Subscription:
+        - Endpoint: !GetAtt SlackFunction.Arn
+          Protocol: lambda
+
+  SlackTopicPermission:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt SlackFunction.Arn
+      Principal: sns.amazonaws.com
+      SourceArn: !Ref SlackTopic
+
+  ProducerDestinations:
+    Type: "AWS::Lambda::EventInvokeConfig"
+    Properties:
+      FunctionName: !Ref ProducerFunction
+      MaximumRetryAttempts: 0
+      MaximumEventAgeInSeconds: 60
+      DestinationConfig:
+        OnSuccess:
+          Destination: !Ref SlackTopic
+      Qualifier: '$LATEST'
 
   TriggerProducer:
+    DependsOn:
+      - ProducerDestinations
+      - SlackTopicPermission
     Type: "Custom::TriggerProducer"
     Properties:
       ServiceToken: !GetAtt ProducerFunction.Arn
       LoggingEmail: !Ref LoggingAccountEmail
+      SlackWebHook: !Ref SlackWebHookUrl
   
 # Outputs:
   

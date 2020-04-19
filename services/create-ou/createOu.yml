@@ -30,3 +30,16 @@ Resources:
     Properties:
       EventSourceArn: !GetAtt FirstQueue.Arn
       FunctionName: !Ref CreateOuFunction
+
+  CreateOuDestinations:
+    Type: "AWS::Lambda::EventInvokeConfig"
+    Properties:
+      FunctionName: !Ref CreateOuFunction
+      MaximumRetryAttempts: 0
+      MaximumEventAgeInSeconds: 60
+      DestinationConfig:
+        OnSuccess:
+          Destination: !ImportValue SlackTopic
+        OnFailure:
+          Destination: !ImportValue OnFailureTopic
+      Qualifier: '$LATEST'

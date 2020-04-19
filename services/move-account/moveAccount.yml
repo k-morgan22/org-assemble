@@ -30,3 +30,16 @@ Resources:
     Properties:
       EventSourceArn: !GetAtt ThirdQueue.Arn
       FunctionName: !Ref MoveAccountFunction
+
+  MoveAccountDestinations:
+    Type: "AWS::Lambda::EventInvokeConfig"
+    Properties:
+      FunctionName: !Ref MoveAccountFunction
+      MaximumRetryAttempts: 0
+      MaximumEventAgeInSeconds: 60
+      DestinationConfig:
+        OnSuccess:
+          Destination: !ImportValue SlackTopic
+        OnFailure:
+          Destination: !ImportValue OnFailureTopic
+      Qualifier: '$LATEST'

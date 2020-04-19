@@ -241,6 +241,86 @@ Resources:
       Principal: sns.amazonaws.com
       SourceArn: !Ref SlackTopic
 
+  OnFailureTopic:
+    Type: "AWS::SNS::Topic"
+    Properties:
+      Subscription:
+        - Endpoint: !GetAtt SlackFunction.Arn
+          Protocol: lambda
+
+  OnFailureTopicPermission:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt SlackFunction.Arn
+      Principal: sns.amazonaws.com
+      SourceArn: !Ref OnFailureTopic
+
+  CreateOuDestinations:
+    Type: "AWS::Lambda::EventInvokeConfig"
+    Properties:
+      FunctionName: !Ref CreateOuFunction
+      MaximumRetryAttempts: 0
+      MaximumEventAgeInSeconds: 60
+      DestinationConfig:
+        OnSuccess:
+          Destination: !Ref SlackTopic
+        OnFailure:
+          Destination: !Ref OnFailureTopic
+      Qualifier: '$LATEST'
+
+  CreateAccountDestinations:
+    Type: "AWS::Lambda::EventInvokeConfig"
+    Properties:
+      FunctionName: !Ref CreateAccountFunction
+      MaximumRetryAttempts: 0
+      MaximumEventAgeInSeconds: 60
+      DestinationConfig:
+        OnSuccess:
+          Destination: !Ref SlackTopic
+        OnFailure:
+          Destination: !Ref OnFailureTopic
+      Qualifier: '$LATEST'
+
+  MoveAccountDestinations:
+    Type: "AWS::Lambda::EventInvokeConfig"
+    Properties:
+      FunctionName: !Ref MoveAccountFunction
+      MaximumRetryAttempts: 0
+      MaximumEventAgeInSeconds: 60
+      DestinationConfig:
+        OnSuccess:
+          Destination: !Ref SlackTopic
+        OnFailure:
+          Destination: !Ref OnFailureTopic
+      Qualifier: '$LATEST'
+
+  StacksetDestinations:
+    Type: "AWS::Lambda::EventInvokeConfig"
+    Properties:
+      FunctionName: !Ref StacksetFunction
+      MaximumRetryAttempts: 0
+      MaximumEventAgeInSeconds: 60
+      DestinationConfig:
+        OnSuccess:
+          Destination: !Ref SlackTopic
+        OnFailure:
+          Destination: !Ref OnFailureTopic
+      Qualifier: '$LATEST'
+
+  UnitTestDestinations:
+    Type: "AWS::Lambda::EventInvokeConfig"
+    Properties:
+      FunctionName: !Ref UnitTestFunction
+      MaximumRetryAttempts: 0
+      MaximumEventAgeInSeconds: 60
+      DestinationConfig:
+        OnSuccess:
+          Destination: !Ref SlackTopic
+        OnFailure:
+          Destination: !Ref OnFailureTopic
+      Qualifier: '$LATEST'
+
   ProducerDestinations:
     Type: "AWS::Lambda::EventInvokeConfig"
     Properties:
@@ -250,12 +330,15 @@ Resources:
       DestinationConfig:
         OnSuccess:
           Destination: !Ref SlackTopic
+        OnFailure:
+          Destination: !Ref OnFailureTopic
       Qualifier: '$LATEST'
 
   TriggerProducer:
     DependsOn:
       - ProducerDestinations
       - SlackTopicPermission
+      - OnFailureTopicPermission
     Type: "Custom::TriggerProducer"
     Properties:
       ServiceToken: !GetAtt ProducerFunction.Arn

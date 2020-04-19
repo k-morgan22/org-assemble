@@ -30,3 +30,16 @@ Resources:
     Properties:
       EventSourceArn: !GetAtt FifthQueue.Arn
       FunctionName: !Ref UnitTestFunction
+
+  UnitTestDestinations:
+    Type: "AWS::Lambda::EventInvokeConfig"
+    Properties:
+      FunctionName: !Ref UnitTestFunction
+      MaximumRetryAttempts: 0
+      MaximumEventAgeInSeconds: 60
+      DestinationConfig:
+        OnSuccess:
+          Destination: !ImportValue SlackTopic
+        OnFailure:
+          Destination: !ImportValue OnFailureTopic
+      Qualifier: '$LATEST'

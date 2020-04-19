@@ -30,3 +30,16 @@ Resources:
     Properties:
       EventSourceArn: !GetAtt SecondQueue.Arn
       FunctionName: !Ref CreateAccountFunction
+
+  CreateAccountDestinations:
+    Type: "AWS::Lambda::EventInvokeConfig"
+    Properties:
+      FunctionName: !Ref CreateAccountFunction
+      MaximumRetryAttempts: 0
+      MaximumEventAgeInSeconds: 60
+      DestinationConfig:
+        OnSuccess:
+          Destination: !ImportValue SlackTopic
+        OnFailure:
+          Destination: !ImportValue OnFailureTopic
+      Qualifier: '$LATEST'

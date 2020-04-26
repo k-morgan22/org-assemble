@@ -11,7 +11,7 @@ def getUrl():
         'Key':'Name' ,
         'Option':'BeginsWith',
         'Values': [
-          value
+          '/org-assemble/slack/slackUrl-'
         ]
       },
     ],

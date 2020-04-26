@@ -57,6 +57,14 @@ Resources:
       Roles:
         - !Ref encryptedBucketRole
 
+  BucketParam:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Type: String 
+      Description: Arn of the child account bucket
+      Value: !GetAtt encryptedBucket.Arn
+      Name: !Sub  /org-assemble/${AWS::AccountId}sAccountBucket/bucket-5c81107d-ec46-444f-9ca6-e589447653bc
+
 Outputs: 
   storageBucket:
     Description: name for storage bucket

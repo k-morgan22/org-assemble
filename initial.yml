@@ -109,22 +109,21 @@ Resources:
       FunctionName: stackset
       Timeout: 30
 
-  UnitTestFunction:
+  CreateTrailFunction:
     Type: "AWS::Lambda::Function"
     Properties:
       Code: 
         S3Bucket: testing-org-lambda
-        S3Key: unitTest.zip
-      Handler: unitTest.lambda_handler
+        S3Key: createTrail.zip
+      Handler: createTrail.lambda_handler
       Role: !GetAtt LambdaAdminRole.Arn
       Runtime: python3.7
-      FunctionName: unitTest
+      FunctionName: createTrail
       Timeout: 30
   
   DeadLetterQueue:
     Type: "AWS::SQS::Queue"
     Properties:
-      ContentBasedDeduplication: false
       FifoQueue: true
       MessageRetentionPeriod: 1209600
   
@@ -135,8 +134,8 @@ Resources:
       FifoQueue: true
       ReceiveMessageWaitTimeSeconds: 20
       RedrivePolicy:
-        deadletterTargetArn: !GetAtt DeadLetterQueue.Arn
-        maxReceiveCount: 5
+        deadLetterTargetArn: !GetAtt DeadLetterQueue.Arn
+        maxReceiveCount: 1
       VisibilityTimeout: 150
 
   SecondQueue:
@@ -146,8 +145,8 @@ Resources:
       FifoQueue: true
       ReceiveMessageWaitTimeSeconds: 20
       RedrivePolicy:
-        deadletterTargetArn: !GetAtt DeadLetterQueue.Arn
-        maxReceiveCount: 5
+        deadLetterTargetArn: !GetAtt DeadLetterQueue.Arn
+        maxReceiveCount: 1
       VisibilityTimeout: 150
 
   ThirdQueue:
@@ -157,8 +156,8 @@ Resources:
       FifoQueue: true
       ReceiveMessageWaitTimeSeconds: 20
       RedrivePolicy:
-        deadletterTargetArn: !GetAtt DeadLetterQueue.Arn
-        maxReceiveCount: 5
+        deadLetterTargetArn: !GetAtt DeadLetterQueue.Arn
+        maxReceiveCount: 1
       VisibilityTimeout: 150
 
   FourthQueue:
@@ -168,8 +167,8 @@ Resources:
       FifoQueue: true
       ReceiveMessageWaitTimeSeconds: 20
       RedrivePolicy:
-        deadletterTargetArn: !GetAtt DeadLetterQueue.Arn
-        maxReceiveCount: 5
+        deadLetterTargetArn: !GetAtt DeadLetterQueue.Arn
+        maxReceiveCount: 1
       VisibilityTimeout: 150
 
   FifthQueue:
@@ -179,8 +178,8 @@ Resources:
       FifoQueue: true
       ReceiveMessageWaitTimeSeconds: 20
       RedrivePolicy:
-        deadletterTargetArn: !GetAtt DeadLetterQueue.Arn
-        maxReceiveCount: 5
+        deadLetterTargetArn: !GetAtt DeadLetterQueue.Arn
+        maxReceiveCount: 1
       VisibilityTimeout: 150
 
   TriggerFirstFunction:
@@ -212,7 +211,7 @@ Resources:
     Type: "AWS::Lambda::EventSourceMapping"
     Properties:
       EventSourceArn: !GetAtt FifthQueue.Arn
-      FunctionName: !Ref UnitTestFunction
+      FunctionName: !Ref CreateTrailFunction
 
   SlackFunction:
     Type: "AWS::Lambda::Function"
@@ -241,104 +240,9 @@ Resources:
       Principal: sns.amazonaws.com
       SourceArn: !Ref SlackTopic
 
-  OnFailureTopic:
-    Type: "AWS::SNS::Topic"
-    Properties:
-      Subscription:
-        - Endpoint: !GetAtt SlackFunction.Arn
-          Protocol: lambda
-
-  OnFailureTopicPermission:
-    Type: "AWS::Lambda::Permission"
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !GetAtt SlackFunction.Arn
-      Principal: sns.amazonaws.com
-      SourceArn: !Ref OnFailureTopic
-
-  CreateOuDestinations:
-    Type: "AWS::Lambda::EventInvokeConfig"
-    Properties:
-      FunctionName: !Ref CreateOuFunction
-      MaximumRetryAttempts: 0
-      MaximumEventAgeInSeconds: 60
-      DestinationConfig:
-        OnSuccess:
-          Destination: !Ref SlackTopic
-        OnFailure:
-          Destination: !Ref OnFailureTopic
-      Qualifier: '$LATEST'
-
-  CreateAccountDestinations:
-    Type: "AWS::Lambda::EventInvokeConfig"
-    Properties:
-      FunctionName: !Ref CreateAccountFunction
-      MaximumRetryAttempts: 0
-      MaximumEventAgeInSeconds: 60
-      DestinationConfig:
-        OnSuccess:
-          Destination: !Ref SlackTopic
-        OnFailure:
-          Destination: !Ref OnFailureTopic
-      Qualifier: '$LATEST'
-
-  MoveAccountDestinations:
-    Type: "AWS::Lambda::EventInvokeConfig"
-    Properties:
-      FunctionName: !Ref MoveAccountFunction
-      MaximumRetryAttempts: 0
-      MaximumEventAgeInSeconds: 60
-      DestinationConfig:
-        OnSuccess:
-          Destination: !Ref SlackTopic
-        OnFailure:
-          Destination: !Ref OnFailureTopic
-      Qualifier: '$LATEST'
-
-  StacksetDestinations:
-    Type: "AWS::Lambda::EventInvokeConfig"
-    Properties:
-      FunctionName: !Ref StacksetFunction
-      MaximumRetryAttempts: 0
-      MaximumEventAgeInSeconds: 60
-      DestinationConfig:
-        OnSuccess:
-          Destination: !Ref SlackTopic
-        OnFailure:
-          Destination: !Ref OnFailureTopic
-      Qualifier: '$LATEST'
-
-  UnitTestDestinations:
-    Type: "AWS::Lambda::EventInvokeConfig"
-    Properties:
-      FunctionName: !Ref UnitTestFunction
-      MaximumRetryAttempts: 0
-      MaximumEventAgeInSeconds: 60
-      DestinationConfig:
-        OnSuccess:
-          Destination: !Ref SlackTopic
-        OnFailure:
-          Destination: !Ref OnFailureTopic
-      Qualifier: '$LATEST'
-
-  ProducerDestinations:
-    Type: "AWS::Lambda::EventInvokeConfig"
-    Properties:
-      FunctionName: !Ref ProducerFunction
-      MaximumRetryAttempts: 0
-      MaximumEventAgeInSeconds: 60
-      DestinationConfig:
-        OnSuccess:
-          Destination: !Ref SlackTopic
-        OnFailure:
-          Destination: !Ref OnFailureTopic
-      Qualifier: '$LATEST'
-
   TriggerProducer:
     DependsOn:
-      - ProducerDestinations
       - SlackTopicPermission
-      - OnFailureTopicPermission
     Type: "Custom::TriggerProducer"
     Properties:
       ServiceToken: !GetAtt ProducerFunction.Arn

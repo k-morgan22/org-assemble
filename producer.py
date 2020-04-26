@@ -65,25 +65,25 @@ def lambda_handler(event, context):
                 Type = 'SecureString'
             )
 
-            # initialQueue = sqs.get_queue_url(
-            #     QueueName = ''
-            # )
+            initialQueue = sqs.get_queue_url(
+                QueueName = ''
+            )
 
-            # payload = { 'LoggingEmail': loggingEmail }
+            payload = { 'LoggingEmail': loggingEmail }
             
-            # batchResponse = sqs.send_message_batch(
-            #     QueueUrl = initialQueue,
-            #     Entries = [
-            #         {
-            #             'Id': '1',
-            #             'MessageBody': JSON.stringify(payload)
-            #         },
-            #         {
-            #             'Id': '2',
-            #             'MessageBody': JSON.stringify(payload)
-            #         }
-            #     ]
-            # )
+            batchResponse = sqs.send_message_batch(
+                QueueUrl = initialQueue,
+                Entries = [
+                    {
+                        'Id': '1',
+                        'MessageBody': json.dumps(payload)
+                    },
+                    {
+                        'Id': '2',
+                        'MessageBody': json.dumps(payload)
+                    }
+                ]
+            )
 
             sendResponse(event, context, "SUCCESS", {})
         except:

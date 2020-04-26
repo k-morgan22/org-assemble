@@ -4,9 +4,9 @@ Description: Template to create an centralized logging bucket,
 # Parameters:
   
 Resources:
-  cloudtrailBucket:
+  s3AccessBucket:
     DeletionPolicy: Retain 
-    UpdateReplacePolicy: Retain 
+    UpdateReplacePolicy: Retain
     Type: "AWS::S3::Bucket"
     Properties:
       AccessControl: LogDeliveryWrite
@@ -14,9 +14,30 @@ Resources:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
-      BucketName: !Sub ${AWS::AccountId}-logs-do-not-delete
+      BucketName: !Sub ${AWS::AccountId}-s3-access-logs-do-not-delete
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: True
+        BlockPublicPolicy: True
+        IgnorePublicAcls: True
+        RestrictPublicBuckets: True
+
+  cloudtrailBucket:
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      BucketName: !Sub ${AWS::AccountId}-cloudtrail-logs-do-not-delete
       LoggingConfiguration:
-        DestinationBucketName: !Sub ${AWS::AccountId}-logs-do-not-delete
+        DestinationBucketName: !Ref s3AccessBucket
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: True
+        BlockPublicPolicy: True
+        IgnorePublicAcls: True
+        RestrictPublicBuckets: True
 
   cloudtrailBucketPolicy:
     Type: "AWS::S3::BucketPolicy"
@@ -36,7 +57,7 @@ Resources:
             Principal:
               Service: cloudtrail.amazonaws.com
             Action: s3:PutObject
-            Resource: !Sub arn:aws:s3:::${cloudtrailBucket}/AWSLogs/${AWS::AccountId}/*
+            Resource: !Sub arn:aws:s3:::${cloudtrailBucket}/AWSLogs/*/*
             Condition:
               StringEquals:
                 s3:x-amz-acl: 'bucket-owner-full-control'

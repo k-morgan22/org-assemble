@@ -4,19 +4,6 @@ Description: Template to create cloudtrail logs, IAM Role, and an encrypted stor
 # Parameters:
   
 Resources:
-  # accountTrail:
-  #   Type: "AWS::CloudTrail::Trail"
-  #   Properties:
-  #     EventSelectors:
-  #       - DataResources:
-  #         - Type: AWS::S3::Object
-  #           Values:
-  #             - !Sub arn:aws:s3:::${encryptedBucket}/
-  #     EnableLogFileValidation: true
-  #     IsLogging: true
-  #     S3BucketName: !Ref cloudtrailBucket
-  #     TrailName: !Sub ${AWS::AccountId}-trail-do-not-delete
-
   encryptedBucket:
     Type: "AWS::S3::Bucket"
     Properties:
@@ -25,8 +12,6 @@ Resources:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
       BucketName: !Sub ${AWS::AccountId}-storage-bucket
-      # LoggingConfiguration:
-      #   DestinationBucketName: !Sub ${AWS::AccountId}-logs-do-not-delete
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
@@ -71,52 +56,6 @@ Resources:
       PolicyName: s3UserAccess
       Roles:
         - !Ref encryptedBucketRole
-
-  # lambdaTestRole:
-  #   Type: "AWS::IAM::Role"
-  #   Properties:
-  #     AssumeRolePolicyDocument: 
-  #       Version: "2012-10-17"
-  #       Statement:
-  #         - Sid: AllowAssumeRole
-  #           Effect: Allow
-  #           Principal:
-  #             Service: lambda.amazonaws.com
-  #           Action: sts:AssumeRole
-  #     Description: Allow lambda to do live unit testing
-  #     RoleName: resourceTester
-
-  # lambdaTestPolicy:
-  #   Type: "AWS::IAM::Policy"
-  #   Properties:
-  #     PolicyDocument: 
-  #       Version: "2012-10-17"
-  #       Statement:
-  #         - Sid: testBuckets
-  #           Effect: Allow
-  #           Action: 
-  #           - s3:GetBucketLogging
-  #           - s3:GetEncryptionConfiguration
-  #           Resource: 
-  #           - !GetAtt cloudtrailBucket.Arn
-  #           - !GetAtt encryptedBucket.Arn
-  #         - Sid: testTrail
-  #           Effect: Allow
-  #           Action: 
-  #           - cloudtrail:GetTrailStatus
-  #           - cloudtrail:GetEventSelectors
-  #           Resource: !GetAtt accountTrail.Arn  
-  #         - Sid: testPolicy
-  #           Effect: Allow
-  #           Action: iam:SimulatePrincipalPolicy
-  #           Resource: !GetAtt encryptedBucketRole.Arn
-  #         - Sid: readCF
-  #           Effect: Allow
-  #           Action: cloudformation:DescribeStacks
-  #           Resource: '*'
-  #     PolicyName: testAccess
-  #     Roles:
-  #       - !Ref lambdaTestRole
 
 Outputs: 
   storageBucket:

@@ -11,7 +11,7 @@ def getUrl():
         'Key':'Name' ,
         'Option':'BeginsWith',
         'Values': [
-          'slackDestinationsUrl-'
+          value
         ]
       },
     ],
@@ -31,15 +31,17 @@ def getUrl():
 
 def lambda_handler(event, context):
   messageBody = json.loads(event['Records'][0]['Sns']['Message'])
-  # messageBody = event['Records'][0]['Sns']['Message']
+  
+  # function = messageBody['functionArn']
+  # condition = messageBody['condition']
+  # data = {
+  #   "Function": function,
+  #   "Condition": condition
+  # }
 
-  function = messageBody['requestContext']['functionArn']
-  condition = messageBody['requestContext']['condition']
-  data = {
-    "Function": function,
-    "Condition": condition
-  }
-  message = json.dumps(data)
+  # message = json.dumps(data)
+  message = json.dumps(messageBody)
+
   
   slackUrl = getUrl()
   

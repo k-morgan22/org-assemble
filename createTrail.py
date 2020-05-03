@@ -1,103 +1,44 @@
 import json
 import boto3
-import uuid
-from uuid import uuid4
 import os
 
-lambdaClient = boto3.client('lambda')
-sqs = boto3.client('sqs')
+# lambdaClient = boto3.client('lambda')
 ssm = boto3.client('ssm')
 sns = boto3.client('sns')
 
 
-# def getBucketArns():
-#   devFilterResponse = ssm.describe_parameters(
-#     ParameterFilters = [
-#       {
-#         'Key':'Name' ,
-#         'Option':'BeginsWith',
-#         'Values': [
-#           '/org-assemble/ouId/security-'
-#         ]
-#       },
-#     ],
-#     MaxResults = 1
-#   )
+def getLogBucket(path, decryption):
+  response = ssm.get_parameters_by_path(
+    Path = path,
+    Recursive = True,
+    WithDecryption = decryption
+  )
   
-#   devParamName = devFilterResponse['Parameters'][0]['Name']
-  
-#   devFilteredParam = ssm.get_parameter(
-#     Name = devParamName
-#   )
-#   devParam = devFilteredParam['Parameter']['Value']
-
-#   stagingFilterResponse = ssm.describe_parameters(
-#     ParameterFilters = [
-#       {
-#         'Key':'Name' ,
-#         'Option':'BeginsWith',
-#         'Values': [
-#           '/org-assemble/ouId/workloads-'
-#         ]
-#       },
-#     ],
-#     MaxResults = 1
-#   )
-  
-#   stagingParamName = stagingFilterResponse['Parameters'][0]['Name']
-  
-#   stagingFilteredParam = ssm.get_parameter(
-#     Name = stagingParamName
-#   )
-#   stagingParam = stagingFilteredParam['Parameter']['Value']
-
-#   prodFilterResponse = ssm.describe_parameters(
-#     ParameterFilters = [
-#       {
-#         'Key':'Name' ,
-#         'Option':'BeginsWith',
-#         'Values': [
-#           '/org-assemble/ouId/workloads-'
-#         ]
-#       },
-#     ],
-#     MaxResults = 1
-#   )
-  
-#   prodParamName = prodFilterResponse['Parameters'][0]['Name']
-  
-#   prodFilteredParam = ssm.get_parameter(
-#     Name = prodParamName
-#   )
-#   prodParam = prodFilteredParam['Parameter']['Value']
-
-#   logFilterResponse = ssm.describe_parameters(
-#     ParameterFilters = [
-#       {
-#         'Key':'Name' ,
-#         'Option':'BeginsWith',
-#         'Values': [
-#           '/org-assemble/ouId/workloads-'
-#         ]
-#       },
-#     ],
-#     MaxResults = 1
-#   )
-  
-#   logParamName = logFilterResponse['Parameters'][0]['Name']
-  
-#   logFilteredParam = ssm.get_parameter(
-#     Name = logParamName
-#   )
-#   logParam = logFilteredParam['Parameter']['Value']
-#   return devParam, stagingParam, prodParam, logParam
+  for param in response['Parameters']:
+    if 'cloudtrail' in param['Name']:
+      return param['Value']
 
 
-
-def slackPublish(arn, status, function):
+def getEnvBuckets(path, decryption):
+  response = ssm.get_parameters_by_path(
+    Path = path,
+    Recursive = True,
+    WithDecryption = decryption
+  )
+  
+  buckets = []
+  
+  for param in response['Parameters']:
+    buckets.append(param['Value'])
+  
+  return buckets
+  
+ 
+def slackPublish(arn, status, function, text):
   payload = {
     "condition": status,
-    "function": function
+    "function": function,
+    "text": text
   }
   response = sns.publish(
     TopicArn = arn, 
@@ -112,8 +53,10 @@ def lambda_handler(event, context):
 
 
   try:
-    # [devBucket, stagingBucket, prodBucket, logBucket] = getBucketArns()
-
-    slackPublish(topicArn, "success", lambdaName)
+    logBucket = getLogBucket('/org-assemble/logAccountBucket', False)
+    bucketList = getEnvBuckets('/org-assemble/envAccountBucket', False)
+    
+    
+    slackPublish(topicArn, "success", None, "Finished assembling your AWS organization")
   except:
-    slackPublish(topicArn, "failed", lambdaName)
+    slackPublish(topicArn, "failed", lambdaName, None)

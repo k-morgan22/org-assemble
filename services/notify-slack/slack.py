@@ -1,62 +1,80 @@
 import json
 import boto3
-from botocore.vendored import requests
+# from botocore.vendored import requests
+import urllib.request
 
-ssm = boto3.client('ssm')
+secret = boto3.client('secretsmanager')
 
 def getUrl():
-  ssmFilterResponse = ssm.describe_parameters(
-    ParameterFilters = [
-      {
-        'Key':'Name' ,
-        'Option':'BeginsWith',
-        'Values': [
-          '/org-assemble/slack/slackUrl-'
-        ]
-      },
-    ],
-    MaxResults = 1
+  urlResponse = secret.get_secret_value(
+    SecretId = '/org-assemble/slack/slackUrl'
   )
-  
-  webhookName = ssmFilterResponse['Parameters'][0]['Name']
-  print(webhookName)
-  
-  urlResponse = ssm.get_parameter(
-    Name = webhookName,
-    WithDecryption = True
-  )
-  url = urlResponse['Parameter']['Value']
+  url = urlResponse['SecretString']
   return url
   
 
 def lambda_handler(event, context):
   messageBody = json.loads(event['Records'][0]['Sns']['Message'])
   
-  # function = messageBody['functionArn']
-  # condition = messageBody['condition']
-  # data = {
-  #   "Function": function,
-  #   "Condition": condition
-  # }
-
-  # message = json.dumps(data)
-  message = json.dumps(messageBody)
-
+  
+  if(messageBody['condition'] == "success"):
+    data = {
+      "blocks": [
+    		{
+    			"type": "section",
+    			"text": {
+    				"type": "mrkdwn",
+    				"text": "SUCCESS :grin:\n" + messageBody['text']
+    			}
+    		}
+    	]
+    }
+  else:
+    data = {
+      "blocks": [
+    		{
+    			"type": "section",
+    			"text": {
+    				"type": "mrkdwn",
+    				"text": ":warning: ERROR :warning:\nSomething went wrong, organization could not be created!"
+    			}
+    		},
+    		{
+    			"type": "context",
+    			"elements": [
+    				{
+    					"type": "mrkdwn",
+    					"text": "*Function:* " + messageBody['function']
+    				}
+    			]
+    		}
+    	]
+    }
+    
   
   slackUrl = getUrl()
+
   
+  # slackResponse = requests.post(
+  #   slackUrl,
+  #   json = data,
+  #   headers = {'Content-Type': 'application/json'}
+  # )
   
-  slackResponse = requests.post(
-    slackUrl,
-    json = {"text": message},
-    headers = {'Content-Type': 'application/json'}
+  request = urllib.request.Request(
+    slackUrl, 
+    data=json.dumps(data).encode("utf-8"), 
+    method="POST"
   )
+  
+  with urllib.request.urlopen(request) as response:
+    response_body = response.read().decode("utf-8")
   
   http_reply = {
     "statusCode": 200,
-    "body": slackResponse.text
+    "body": response_body
   }
 
-  print(message)
   return http_reply
+
   

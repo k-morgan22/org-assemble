@@ -69,6 +69,13 @@ Metadata:
         default: Slack WebHook Url
 
 Resources:
+  slackSecret:
+    Type: "AWS::SecretsManager::Secret"
+    Properties:
+      Description: Url for slack webhook 
+      SecretString: !Ref SlackWebHookUrl
+      Name: /org-assemble/slack/slackUrl
+  
   LambdaAdminRole:
     Type: "AWS::IAM::Role"
     Properties:
@@ -93,10 +100,10 @@ Resources:
       Role: !GetAtt LambdaAdminRole.Arn
       Runtime: python3.7
       FunctionName: producer
+      MemorySize: 512
       Timeout: 30
       Environment:
         Variables:
-          SlackWebHook: !Ref SlackWebHookUrl
           NextQueue: !Ref FirstQueue
           SlackArn: !Ref SlackTopic
 
@@ -110,6 +117,7 @@ Resources:
       Role: !GetAtt LambdaAdminRole.Arn
       Runtime: python3.7
       FunctionName: logic
+      MemorySize: 512
       Timeout: 30
       Environment:
         Variables:
@@ -128,6 +136,7 @@ Resources:
       Role: !GetAtt LambdaAdminRole.Arn
       Runtime: python3.7
       FunctionName: createOu
+      MemorySize: 512
       Timeout: 30
       Environment:
         Variables:
@@ -146,6 +155,7 @@ Resources:
       Role: !GetAtt LambdaAdminRole.Arn
       Runtime: python3.7
       FunctionName: createAccount
+      MemorySize: 512
       Timeout: 30
       Environment:
         Variables:
@@ -163,6 +173,7 @@ Resources:
       Role: !GetAtt LambdaAdminRole.Arn
       Runtime: python3.7
       FunctionName: moveAccount
+      MemorySize: 512
       Timeout: 30
       Environment:
         Variables:
@@ -180,6 +191,7 @@ Resources:
       Role: !GetAtt LambdaAdminRole.Arn
       Runtime: python3.7
       FunctionName: stackset
+      MemorySize: 512
       Timeout: 30
       Environment:
         Variables:
@@ -197,6 +209,7 @@ Resources:
       Role: !GetAtt LambdaAdminRole.Arn
       Runtime: python3.7
       FunctionName: createTrail
+      MemorySize: 512
       Timeout: 30
       Environment:
         Variables:
@@ -273,12 +286,14 @@ Resources:
   TriggerSecondFunction:
     Type: "AWS::Lambda::EventSourceMapping"
     Properties:
+      BatchSize: 1
       EventSourceArn: !GetAtt SecondQueue.Arn
       FunctionName: !Ref CreateAccountFunction
 
   TriggerThirdFunction:
     Type: "AWS::Lambda::EventSourceMapping"
     Properties:
+      BatchSize: 1
       EventSourceArn: !GetAtt ThirdQueue.Arn
       FunctionName: !Ref MoveAccountFunction
 
@@ -301,7 +316,7 @@ Resources:
       Type: String 
       Description: Email address used to create logging account
       Value: !Ref LoggingAccountEmail
-      Name: /org-assemble/emails/logging-bdac6e7f-5804-43c1-b6c2-506d81aee5a7
+      Name: !Sub /org-assemble/emails/logging-${AWS::AccountId}
   
   DevEmail:
     Type: "AWS::SSM::Parameter"
@@ -309,7 +324,7 @@ Resources:
       Type: String 
       Description: Email address used to create dev account
       Value: !Ref DevAccountEmail
-      Name: /org-assemble/emails/dev-86cbc64f-3451-4239-bd07-2430813e7391
+      Name: !Sub /org-assemble/emails/dev-${AWS::AccountId}
 
   StagingEmail:
     Type: "AWS::SSM::Parameter"
@@ -317,7 +332,7 @@ Resources:
       Type: String 
       Description: Email address used to create staging account
       Value: !Ref StagingAccountEmail
-      Name: /org-assemble/emails/staging-256b2e46-5c62-4819-a4d9-d9b55fa5aefc
+      Name: !Sub /org-assemble/emails/staging-${AWS::AccountId}
   
   ProdEmail:
     Type: "AWS::SSM::Parameter"
@@ -325,7 +340,7 @@ Resources:
       Type: String 
       Description: Email address used to create prod account
       Value: !Ref ProdAccountEmail
-      Name: /org-assemble/emails/prod-367f087d-5008-4cbc-a5b7-2c83244445b1
+      Name: !Sub /org-assemble/emails/prod-${AWS::AccountId}
 
 
   SlackFunction:
@@ -339,6 +354,7 @@ Resources:
       Runtime: python3.7
       FunctionName: slack
       Timeout: 30
+      MemorySize: 512
   
   SlackTopic:
     Type: "AWS::SNS::Topic"
@@ -355,14 +371,14 @@ Resources:
       Principal: sns.amazonaws.com
       SourceArn: !Ref SlackTopic
 
-  TriggerProducer:
-    DependsOn:
-      - SlackTopicPermission
-    Type: "Custom::TriggerProducer"
-    Properties:
-      ServiceToken: !GetAtt ProducerFunction.Arn
-      LoggingEmail: !Ref LoggingAccountEmail
-      SlackWebHook: !Ref SlackWebHookUrl
+  # TriggerProducer:
+  #   DependsOn:
+  #     - SlackTopicPermission
+  #   Type: "Custom::TriggerProducer"
+  #   Properties:
+  #     ServiceToken: !GetAtt ProducerFunction.Arn
+  #     LoggingEmail: !Ref LoggingAccountEmail
+  #     SlackWebHook: !Ref SlackWebHookUrl
   
 # Outputs:
   

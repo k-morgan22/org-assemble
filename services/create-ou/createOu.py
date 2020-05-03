@@ -1,6 +1,6 @@
 import json
 import boto3
-import uuid
+from uuid import uuid4
 import os
 
 lambdaClient = boto3.client('lambda')
@@ -22,13 +22,11 @@ def invoke(funct):
 
 
 
-def slackPublish(arn, param1, param2, param3, status, function):
+def slackPublish(arn, status, function, text):
   payload = {
-    "param1": param1, 
-    "param2": param2,
-    "param3": param3,
     "condition": status,
-    "function": function
+    "function": function,
+    "text": text
   }
   response = sns.publish(
     TopicArn = arn, 
@@ -37,46 +35,46 @@ def slackPublish(arn, param1, param2, param3, status, function):
   ) 
 
 
-
 def lambda_handler(event, context):
   lambdaName = os.environ['LambdaName']
   topicArn = os.environ['SlackArn']
   nextFunct = os.environ['InvokeLambda']
-  ouName = event['Records'][0]['body']
 
 
   try:
     
-    masterId = 'r-0h4'
-    ouId = 'o-' + str(uuid.uuid4())
-
-    masterName = '/org-assemble/masterId/master-'+ str(uuid.uuid4())
+    masterId = 'r-' + str(uuid4())
+    masterName = '/org-assemble/orgIds/master-'+ str(uuid4())
+    
     putParameter = ssm.put_parameter(
       Name = masterName,
       Description = 'Master Org Id',
       Value = masterId,
       Type = 'String'
     )
+  
+    securityId = 'o-' + str(uuid4())
+    workloadsId = 'o-' + str(uuid4())
+    
+    
 
-    if(ouName == 'Security'):
-      securityName = '/org-assemble/ouId/security-'+ str(uuid.uuid4())
-      putParameter = ssm.put_parameter(
-        Name = securityName,
-        Description = 'Security Ou Id',
-        Value = ouId,
-        Type = 'String'
-      )
-    else:
-      workloadsName = '/org-assemble/ouId/workloads-'+ str(uuid.uuid4())
-      putParameter = ssm.put_parameter(
-        Name = workloadsName,
-        Description = 'Workloads Ou Id',
-        Value = ouId,
-        Type = 'String'
-      )
+    securityName = '/org-assemble/orgIds/security-'+ str(uuid4())
+    putParameter = ssm.put_parameter(
+      Name = securityName,
+      Description = 'Security Ou Id',
+      Value = securityId,
+      Type = 'String'
+    )
+    
+    workloadsName = '/org-assemble/orgIds/workloads-'+ str(uuid4())
+    putParameter = ssm.put_parameter(
+      Name = workloadsName,
+      Description = 'Workloads Ou Id',
+      Value = workloadsId,
+      Type = 'String'
+    )
 
     invoke(nextFunct)
-    slackPublish(topicArn, ouName, lambdaName, nextFunct, "success", lambdaName)
   except:
-    slackPublish(topicArn, ouName, lambdaName, nextFunct, "failed", lambdaName)
+    slackPublish(topicArn, "failed", lambdaName, None)
     

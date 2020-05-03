@@ -1,6 +1,5 @@
 import json
 import boto3
-import uuid
 from uuid import uuid4
 import os
 
@@ -9,48 +8,19 @@ sqs = boto3.client('sqs')
 ssm = boto3.client('ssm')
 sns = boto3.client('sns')
 
-
-def getOuIds():
-  securityFilterResponse = ssm.describe_parameters(
-    ParameterFilters = [
-      {
-        'Key':'Name' ,
-        'Option':'BeginsWith',
-        'Values': [
-          '/org-assemble/ouId/security-'
-        ]
-      },
-    ],
-    MaxResults = 1
+def getOuIds(path, decryption):
+  response = ssm.get_parameters_by_path(
+    Path = path,
+    Recursive = True,
+    WithDecryption = decryption
   )
   
-  securityParamName = securityFilterResponse['Parameters'][0]['Name']
-  
-  securityFilteredParam = ssm.get_parameter(
-    Name = securityParamName
-  )
-  securityParam = securityFilteredParam['Parameter']['Value']
-
-  workloadsFilterResponse = ssm.describe_parameters(
-    ParameterFilters = [
-      {
-        'Key':'Name' ,
-        'Option':'BeginsWith',
-        'Values': [
-          '/org-assemble/ouId/workloads-'
-        ]
-      },
-    ],
-    MaxResults = 1
-  )
-  
-  workloadsParamName = workloadsFilterResponse['Parameters'][0]['Name']
-  
-  workloadsFilteredParam = ssm.get_parameter(
-    Name = workloadsParamName
-  )
-  workloadsParam = workloadsFilteredParam['Parameter']['Value']
-  return securityParam, workloadsParam
+  for param in response['Parameters']:
+    if 'security' in param['Name']:
+      security = param['Value']
+    elif 'workloads' in param['Name']:
+      workloads = param['Value']
+  return security, workloads
 
 
 def sendMessage(url, messageBody):
@@ -62,13 +32,11 @@ def sendMessage(url, messageBody):
   )
 
 
-def slackPublish(arn, param1, param2, param3, status, function):
+def slackPublish(arn, status, function, text):
   payload = {
-    "param1": param1, 
-    "param2": param2,
-    "param3": param3,
     "condition": status,
-    "function": function
+    "function": function,
+    "text": text
   }
   response = sns.publish(
     TopicArn = arn, 
@@ -84,9 +52,9 @@ def lambda_handler(event, context):
 
 
   try:
-    [securityId, workloadsId] = getOuIds()
+    [securityId, workloadsId] = getOuIds('/org-assemble/orgIds', False)
 
     sendMessage(queueUrl, "stacksets deployed")
-    slackPublish(topicArn, queueUrl, securityId, workloadsId, "success", lambdaName)
+    slackPublish(topicArn, "success", None, "Security and Env Account baselines deployed")
   except:
-    slackPublish(topicArn, queueUrl, securityId, workloadsId, "failed", lambdaName)
+    slackPublish(topicArn, "failed", lambdaName, None)

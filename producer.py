@@ -1,13 +1,12 @@
 import json
 import boto3
 from botocore.vendored import requests
-import uuid
+from uuid import uuid4
 import os
 
 
 lambdaClient = boto3.client('lambda')
 sqs = boto3.client('sqs')
-ssm = boto3.client('ssm')
 sns = boto3.client('sns')
 
 
@@ -47,27 +46,20 @@ def deleteResponse(event, context):
   except:
     sendResponse(event, context, "FAILED", {})
 
-def messageFormat(body):
-  message = {
-    'id': uuid4().hex,
-    'string': body
-  }
-  return message 
-
-def sendMessage(url, body_list):
-  messages_list = [messageFormat(each) for each in body_list]
-  
-  response = sqs.send_message_batch(
+def sendMessage(url, messageBody):
+  response = sqs.send_message(
     QueueUrl = url,
-    Entries = [{'Id': message['id'], 'MessageBody': message['string'],'MessageDeduplicationId': message['id'],'MessageGroupId': '1'} for message in messages_list]
+    MessageBody = messageBody,
+    MessageDeduplicationId= uuid4().hex,
+    MessageGroupId='1'
   )
 
-def slackPublish(arn, param1, param2, param3, status):
+
+def slackPublish(arn, status, function, text):
   payload = {
-    "param1": param1, 
-    "param2": param2,
-    "param3": param3,
-    "condition": status
+    "condition": status,
+    "function": function,
+    "text": text
   }
   response = sns.publish(
     TopicArn = arn, 
@@ -76,42 +68,33 @@ def slackPublish(arn, param1, param2, param3, status):
   ) 
 
 
-
-
 def lambda_handler(event, context):
   lambdaArn = event['ResourceProperties']['ServiceToken']
-  webhookUrl = os.environ['SlackWebHook']
   queueUrl = os.environ['NextQueue']
   topicArn = os.environ['SlackArn']
   
   
   if(event['RequestType'] == 'Create'):
     try:
-      randomName = '/org-assemble/slack/slackUrl-'+ str(uuid.uuid4())
-      putParameter = ssm.put_parameter(
-        Name = randomName,
-        Description = 'Url for slack reports',
-        Value = webhookUrl,
-        Type = 'SecureString'
-      )
 
-      ouNames = ["Security", "Workloads"]
-      sendMessage(queueUrl, ouNames)
+      sendMessage(queueUrl, "create organizational units!")
     
-      slackPublish(topicArn, queueUrl, webhookUrl, topicArn, "success")
 
       sendResponse(event, context, "SUCCESS", {})
     except:
-      slackPublish(topicArn, queueUrl, webhookUrl, topicArn, "failed")
+      slackPublish(topicArn, "failed", "producer", None)
+      sendResponse(event, context, "FAILED", {})
           
           
   if(event['RequestType'] == 'Update'):
     try:
       sendResponse(event, context, "SUCCESS", {})
     except:
-      slackPublish(topicArn, queueUrl, webhookUrl, topicArn, "failed update")
+      slackPublish(topicArn, "failed", "producer", None)
+      sendResponse(event, context, "FAILED", {})      
   elif(event['RequestType'] == 'Delete'):
     try:
       deleteResponse(event, context)
     except:
-      slackPublish(topicArn, queueUrl, webhookUrl, topicArn, "failed delete")
+      slackPublish(topicArn, "failed", "producer", None)
+      sendResponse(event, context, "FAILED", {})

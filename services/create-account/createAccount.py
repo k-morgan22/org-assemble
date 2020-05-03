@@ -1,6 +1,5 @@
 import json
 import boto3
-import uuid
 from uuid import uuid4
 import os
 
@@ -9,92 +8,17 @@ sqs = boto3.client('sqs')
 ssm = boto3.client('ssm')
 sns = boto3.client('sns')
 
-def getEmail(accountName):
-  if(accountName == 'Logging'):
-    ssmFilterResponse = ssm.describe_parameters(
-      ParameterFilters = [
-        {
-          'Key':'Name' ,
-          'Option':'BeginsWith',
-          'Values': [
-            '/org-assemble/emails/logging-'
-          ]
-        },
-      ],
-      MaxResults = 1
-    )
-    
-    paramName = ssmFilterResponse['Parameters'][0]['Name']
-    
-    filteredParam = ssm.get_parameter(
-      Name = paramName
-    )
-    param = filteredParam['Parameter']['Value']
-    return param
-  elif(accountName == 'Dev'):
-    ssmFilterResponse = ssm.describe_parameters(
-      ParameterFilters = [
-        {
-          'Key':'Name' ,
-          'Option':'BeginsWith',
-          'Values': [
-            '/org-assemble/emails/dev-'
-          ]
-        },
-      ],
-      MaxResults = 1
-    )
-    
-    paramName = ssmFilterResponse['Parameters'][0]['Name']
-    
-    filteredParam = ssm.get_parameter(
-      Name = paramName
-    )
-    param = filteredParam['Parameter']['Value']
-    return param    
-  elif(accountName == 'Staging'):
-    ssmFilterResponse = ssm.describe_parameters(
-      ParameterFilters = [
-        {
-          'Key':'Name' ,
-          'Option':'BeginsWith',
-          'Values': [
-            '/org-assemble/emails/staging-'
-          ]
-        },
-      ],
-      MaxResults = 1
-    )
-    
-    paramName = ssmFilterResponse['Parameters'][0]['Name']
-    
-    filteredParam = ssm.get_parameter(
-      Name = paramName
-    )
-    param = filteredParam['Parameter']['Value']
-    return param    
-  elif(accountName == 'Prod'):
-    ssmFilterResponse = ssm.describe_parameters(
-      ParameterFilters = [
-        {
-          'Key':'Name' ,
-          'Option':'BeginsWith',
-          'Values': [
-            '/org-assemble/emails/prod-'
-          ]
-        },
-      ],
-      MaxResults = 1
-    )
-    
-    paramName = ssmFilterResponse['Parameters'][0]['Name']
-    
-    filteredParam = ssm.get_parameter(
-      Name = paramName
-    )
-    param = filteredParam['Parameter']['Value']
-    return param
-
+def getEmail(path, accountName):
+  response = ssm.get_parameters_by_path(
+    Path = path,
+    Recursive = True,
+    WithDecryption = False
+  )
+  
+  for param in response['Parameters']:
+    if accountName in param['Name']:
+      return param['Value']
+        
 
 def sendMessage(url, messageBody):
   response = sqs.send_message(
@@ -105,21 +29,17 @@ def sendMessage(url, messageBody):
   )
 
 
-def slackPublish(arn, param1, param2, param3, status, function):
+def slackPublish(arn, status, function, text):
   payload = {
-    "param1": param1, 
-    "param2": param2,
-    "param3": param3,
     "condition": status,
-    "function": function
+    "function": function,
+    "text": text
   }
   response = sns.publish(
     TopicArn = arn, 
     Message=json.dumps({'default': json.dumps(payload)}),
     MessageStructure='json'
   ) 
-
-
 
 def lambda_handler(event, context):
   lambdaName = os.environ['LambdaName']
@@ -129,18 +49,19 @@ def lambda_handler(event, context):
 
 
   try:
-    email = getEmail(accountName)
-    accountId = '43143143141'
+    email = getEmail('/org-assemble/emails', accountName)
+    # use accountName.toUppercase() when creating account
+    accountId = uuid4().hex
     
-    randomName = '/org-assemble/accountId/' + accountName + '-' + str(uuid.uuid4())
+    randomName = '/org-assemble/accountIds/' + accountName + '-' + str(uuid4())
     putParameter = ssm.put_parameter(
       Name = randomName,
       Description = 'Account Id',
       Value = accountId,
       Type = 'String'
-    )
+    ) 
 
     sendMessage(queueUrl, accountName)
-    slackPublish(topicArn, accountName, email, randomName, "success", lambdaName)
   except:
-    slackPublish(topicArn, accountName, email, randomName, "failed", lambdaName)
+    slackPublish(topicArn, "failed", lambdaName, None)
+  

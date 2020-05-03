@@ -11,124 +11,90 @@ ssm = boto3.client('ssm')
 org = boto3.client('organizations')
 
 
-def getMasterId():
-  ssmFilterResponse = ssm.describe_parameters(
-    ParameterFilters = [
-      {
-        'Key':'Name' ,
-        'Option':'BeginsWith',
-        'Values': [
-          '/org-assemble/masterId/master-'
-        ]
-      },
-    ],
-    MaxResults = 1
+def getMasterId(path, decryption):
+  response = ssm.get_parameters_by_path(
+    Path = path,
+    Recursive = True,
+    WithDecryption = decryption
   )
   
-  paramName = ssmFilterResponse['Parameters'][0]['Name']
-  
-  filteredParam = ssm.get_parameter(
-    Name = paramName
-  )
-  param = filteredParam['Parameter']['Value']
-  return param
-
-def getOuIds():
-  securityFilterResponse = ssm.describe_parameters(
-    ParameterFilters = [
-      {
-        'Key':'Name' ,
-        'Option':'BeginsWith',
-        'Values': [
-          '/org-assemble/ouId/security-'
-        ]
-      },
-    ],
-    MaxResults = 1
-  )
-  
-  securityParamName = securityFilterResponse['Parameters'][0]['Name']
-  
-  securityFilteredParam = ssm.get_parameter(
-    Name = securityParamName
-  )
-  securityParam = securityFilteredParam['Parameter']['Value']
-
-  workloadsFilterResponse = ssm.describe_parameters(
-    ParameterFilters = [
-      {
-        'Key':'Name' ,
-        'Option':'BeginsWith',
-        'Values': [
-          '/org-assemble/ouId/workloads-'
-        ]
-      },
-    ],
-    MaxResults = 1
-  )
-  
-  workloadsParamName = workloadsFilterResponse['Parameters'][0]['Name']
-  
-  workloadsFilteredParam = ssm.get_parameter(
-    Name = workloadsParamName
-  )
-  workloadsParam = workloadsFilteredParam['Parameter']['Value']
-  return securityParam, workloadsParam
+  for param in response['Parameters']:
+    if 'master' in param['Name']:
+      master = param['Value']
+  return master
 
 
-def checkOu(QueueName):
-  rootId = getMasterId()
+def getOuIds(path, decryption):
+  response = ssm.get_parameters_by_path(
+    Path = path,
+    Recursive = True,
+    WithDecryption = decryption
+  )
+  
+  for param in response['Parameters']:
+    if 'security' in param['Name']:
+      security = param['Value']
+    elif 'workloads' in param['Name']:
+      workloads = param['Value']
+  return security, workloads
+    
+
+def checkOu(QueueName, snsArn):
+  rootId = getMasterId('/org-assemble/orgIds', False)
+
   isPresent = False
-  
+  ous = []
+
   ouList= org.list_organizational_units_for_parent(
     ParentId = rootId
   )
-  
-  ou1 = ouList['OrganizationalUnits'][0]['Name']
-  ou2 = ouList['OrganizationalUnits'][1]['Name']
-  
-  if ((ou1 in ['Security', 'Workloads']) and (ou2 in ['Security', 'Workloads'])):
-    print("both ous are present")
+
+  for ou in ouList['OrganizationalUnits']:
+    ous.append(ou['Name'])
+ 
+  if 'Security' in ous and 'Workloads' in ous:
     isPresent = True
   
   if(isPresent):
     sendMessages(4, QueueName)
+    slackPublish(snsArn, "success", None, "Security & Workloads organizational units have been created")
 
 
-def checkAccount(QueueName):
-  [securityId, workloadsId] = getOuIds()
+
+
+def checkAccount(QueueName, snsArn):
+  [securityId, workloadsId] = getOuIds('/org-assemble/orgIds', False)
+  
   isSecurityCreated = False
   isWorkloadsCreated = False
+  secList = []
+  workList = []
     
   securityAccounts = org.list_accounts_for_parent(
     ParentId = securityId
   )
     
-  s1 = securityAccounts['Accounts'][0]['Name']
-
+  for account in securityAccounts['Accounts']:
+    secList.append(account['Name'])
     
   workloadsAccounts = org.list_accounts_for_parent(
     ParentId = workloadsId
   )
     
-  w1 = workloadsAccounts['Accounts'][0]['Name']
-  w2 = workloadsAccounts['Accounts'][1]['Name']
-  w3 = workloadsAccounts['Accounts'][2]['Name']
-
+  for account in workloadsAccounts['Accounts']:
+    workList.append(account['Name'])
     
-    
-  if(s1 == 'Logging'):
-    print('logging in correct ou')
+  if 'Logging' in secList:
     isSecurityCreated = True
     
-  if((w1 in ['Prod', 'Dev', 'Staging']) and (w2 in ['Prod', 'Dev', 'Staging']) and (w3 in ['Prod', 'Dev', 'Staging'])):
-    print('prod, dev, and staging in correct ou')
+  if 'Dev' in workList and 'Prod' in workList and 'Staging' in workList:
     isWorkloadsCreated = True
 
   if(isSecurityCreated and isWorkloadsCreated):
     sendMessages(1, QueueName)
-    print('message sent')
-  
+    slackPublish(snsArn, "success", None, "All accounts created and moved to the correct Organizational Unit")
+
+
 
 def messageFormat(body):
   message = {
@@ -146,7 +112,7 @@ def sendMessages(entries, url):
       MessageGroupId='1'
     )
   else:
-    messageBody = ["Dev", "Staging", "Prod", "Logging"]
+    messageBody = ["dev", "staging", "prod", "logging"]
     messages_list = [messageFormat(each) for each in messageBody]
     
     response = sqs.send_message_batch(
@@ -154,18 +120,17 @@ def sendMessages(entries, url):
       Entries = [{'Id': message['id'], 'MessageBody': message['string'],'MessageDeduplicationId': message['id'],'MessageGroupId': '1'} for message in messages_list]
     )
     
-
-def slackPublish(arn, param1, status, function):
+def slackPublish(arn, status, function, text):
   payload = {
-    "param1": param1, 
     "condition": status,
-    "function": function
+    "function": function,
+    "text": text
   }
   response = sns.publish(
     TopicArn = arn, 
     Message=json.dumps({'default': json.dumps(payload)}),
     MessageStructure='json'
-  ) 
+  )  
 
 def lambda_handler(event, context):
   queueUrl = os.environ['NextQueue']
@@ -175,15 +140,10 @@ def lambda_handler(event, context):
 
   try:
     if(event['origin'] == 'createOu'):
-      checkOu(queueUrl)
+      checkOu(queueUrl, topicArn)
     elif(event['origin'] == 'moveAccount'):
-      checkAccount(secondUrl)
+      checkAccount(secondUrl,topicArn)
 
-
-    slackPublish(topicArn, queueUrl, "success", lambdaName)
   except:
-    slackPublish(topicArn, queueUrl, "failed", lambdaName)
-
-
-
+    slackPublish(topicArn, "failed", lambdaName, None)
   

@@ -63,7 +63,7 @@ Resources:
       Type: String 
       Description: Arn of the child account bucket
       Value: !GetAtt encryptedBucket.Arn
-      Name: !Sub  /org-assemble/${AWS::AccountId}sAccountBucket/bucket-5c81107d-ec46-444f-9ca6-e589447653bc
+      Name: !Sub  /org-assemble/envAccountBucket/${AWS::AccountId}-bucket-5c81107d-ec46-444f-9ca6-e589447653bc
 
 Outputs: 
   storageBucket:

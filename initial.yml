@@ -230,8 +230,8 @@ Resources:
       ReceiveMessageWaitTimeSeconds: 20
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt DeadLetterQueue.Arn
-        maxReceiveCount: 1
-      VisibilityTimeout: 150
+        maxReceiveCount: 5
+      VisibilityTimeout: 300
 
   SecondQueue:
     Type: "AWS::SQS::Queue"
@@ -241,8 +241,8 @@ Resources:
       ReceiveMessageWaitTimeSeconds: 20
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt DeadLetterQueue.Arn
-        maxReceiveCount: 1
-      VisibilityTimeout: 150
+        maxReceiveCount: 5
+      VisibilityTimeout: 300
 
   ThirdQueue:
     Type: "AWS::SQS::Queue"
@@ -252,8 +252,8 @@ Resources:
       ReceiveMessageWaitTimeSeconds: 20
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt DeadLetterQueue.Arn
-        maxReceiveCount: 1
-      VisibilityTimeout: 150
+        maxReceiveCount: 5
+      VisibilityTimeout: 300
 
   FourthQueue:
     Type: "AWS::SQS::Queue"
@@ -263,8 +263,8 @@ Resources:
       ReceiveMessageWaitTimeSeconds: 20
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt DeadLetterQueue.Arn
-        maxReceiveCount: 1
-      VisibilityTimeout: 150
+        maxReceiveCount: 5
+      VisibilityTimeout: 300
 
   FifthQueue:
     Type: "AWS::SQS::Queue"
@@ -274,8 +274,8 @@ Resources:
       ReceiveMessageWaitTimeSeconds: 20
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt DeadLetterQueue.Arn
-        maxReceiveCount: 1
-      VisibilityTimeout: 150
+        maxReceiveCount: 5
+      VisibilityTimeout: 300
 
   TriggerFirstFunction:
     Type: "AWS::Lambda::EventSourceMapping"
@@ -371,14 +371,19 @@ Resources:
       Principal: sns.amazonaws.com
       SourceArn: !Ref SlackTopic
 
-  # TriggerProducer:
-  #   DependsOn:
-  #     - SlackTopicPermission
-  #   Type: "Custom::TriggerProducer"
-  #   Properties:
-  #     ServiceToken: !GetAtt ProducerFunction.Arn
-  #     LoggingEmail: !Ref LoggingAccountEmail
-  #     SlackWebHook: !Ref SlackWebHookUrl
+  TriggerProducer:
+    DependsOn:
+      - SlackTopicPermission
+      - TriggerFirstFunction
+      - TriggerSecondFunction
+      - TriggerThirdFunction
+      - TriggerFourthFunction
+      - TriggerFifthFunction
+    Type: "Custom::TriggerProducer"
+    Properties:
+      ServiceToken: !GetAtt ProducerFunction.Arn
+      LoggingEmail: !Ref LoggingAccountEmail
+      SlackWebHook: !Ref SlackWebHookUrl
   
 # Outputs:
   

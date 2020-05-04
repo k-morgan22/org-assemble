@@ -70,7 +70,7 @@ def lambda_handler(event, context):
 
 
   try:
-    accountId = getaccountId('/org-assemble/accountId', accountName)
+    accountId = getaccountId('/org-assemble/accountIds', accountName)
     [masterId, securityId, workloadsId] = getOrgIds('/org-assemble/orgIds', False)
 
 

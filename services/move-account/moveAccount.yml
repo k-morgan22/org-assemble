@@ -1,0 +1,45 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Resources needed to run moveAccount.py
+  
+Resources:
+  MoveAccountFunction:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Code: 
+        S3Bucket: testing-org-lambda
+        S3Key: moveAccount.zip
+      Handler: moveAccount.lambda_handler
+      Role: !ImportValue LambdaRole
+      Runtime: python3.7
+      FunctionName: moveAccount
+      Timeout: 30
+
+  ThirdQueue:
+    Type: "AWS::SQS::Queue"
+    Properties:
+      ContentBasedDeduplication: false
+      FifoQueue: true
+      ReceiveMessageWaitTimeSeconds: 20
+      RedrivePolicy:
+        deadletterTargetArn: !ImportValue DeadLetterQueue
+        maxReceiveCount: 5
+      VisibilityTimeout: 150
+
+  TriggerThirdFunction:
+    Type: "AWS::Lambda::EventSourceMapping"
+    Properties:
+      EventSourceArn: !GetAtt ThirdQueue.Arn
+      FunctionName: !Ref MoveAccountFunction
+
+  MoveAccountDestinations:
+    Type: "AWS::Lambda::EventInvokeConfig"
+    Properties:
+      FunctionName: !Ref MoveAccountFunction
+      MaximumRetryAttempts: 0
+      MaximumEventAgeInSeconds: 60
+      DestinationConfig:
+        OnSuccess:
+          Destination: !ImportValue SlackTopic
+        OnFailure:
+          Destination: !ImportValue OnFailureTopic
+      Qualifier: '$LATEST'

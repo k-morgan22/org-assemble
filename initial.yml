@@ -9,6 +9,33 @@ Parameters:
     MaxLength: 64 
     AllowedPattern: ^[_A-Za-z0-9-\+\.]+(\.[_A-Za-z0-9-]+)*@[A-Za-z0-9-]+(\.[A-Za-z0-9]+)*(\.[A-Za-z]{2,})$
     ConstraintDescription: Account Email can contain only ASCII characters. This must be in the format of something@email.com
+  DevAccountEmail:
+    Description: Email address used create a dev environment account 
+    Type: String
+    MinLength: 6
+    MaxLength: 64
+    AllowedPattern: ^[_A-Za-z0-9-\+\.]+(\.[_A-Za-z0-9-]+)*@[A-Za-z0-9-]+(\.[A-Za-z0-9]+)*(\.[A-Za-z]{2,})$
+    ConstraintDescription: Account Email can contain only ASCII characters. This must be in the format of something@email.com
+  StagingAccountEmail:
+    Description: Email address used create a staging environment account 
+    Type: String
+    MinLength: 6
+    MaxLength: 64
+    AllowedPattern: ^[_A-Za-z0-9-\+\.]+(\.[_A-Za-z0-9-]+)*@[A-Za-z0-9-]+(\.[A-Za-z0-9]+)*(\.[A-Za-z]{2,})$
+    ConstraintDescription: Account Email can contain only ASCII characters. This must be in the format of something@email.com
+  ProdAccountEmail:
+    Description: Email address used create a prod environment account
+    Type: String
+    MinLength: 6
+    MaxLength: 64
+    AllowedPattern: ^[_A-Za-z0-9-\+\.]+(\.[_A-Za-z0-9-]+)*@[A-Za-z0-9-]+(\.[A-Za-z0-9]+)*(\.[A-Za-z]{2,})$
+    ConstraintDescription: Account Email can contain only ASCII characters. This must be in the format of something@email.com
+  SlackWebHookUrl:
+    Description: Incoming WebHooks Integration for slack channel messaging 
+    Type: String
+    NoEcho: true
+
+
 
 
 Metadata:
@@ -18,12 +45,37 @@ Metadata:
         default: Organization Security OU Configuration 
       Parameters:
       - LoggingAccountEmail
+    - Label:
+        default: Organization Workloads OU Configuration 
+      Parameters:
+      - DevAccountEmail
+      - StagingAccountEmail
+      - ProdAccountEmail
+    - Label:
+        default: Slack Channel Messaging Configuration 
+      Parameters:
+      - SlackWebHookUrl
     
     ParameterLabels:
       LoggingAccountEmail:
         default: Log Archive Account Email Address
+      DevAccountEmail:
+        default: Dev Account Email Address
+      StagingAccountEmail:
+        default: Staging Account Email Address
+      ProdAccountEmail:
+        default: Prod Account Email Address
+      SlackWebHookUrl:
+        default: Slack WebHook Url
 
 Resources:
+  slackSecret:
+    Type: "AWS::SecretsManager::Secret"
+    Properties:
+      Description: Url for slack webhook 
+      SecretString: !Ref SlackWebHookUrl
+      Name: /org-assemble/slack/slackUrl
+  
   LambdaAdminRole:
     Type: "AWS::IAM::Role"
     Properties:
@@ -38,32 +90,295 @@ Resources:
         - arn:aws:iam::aws:policy/AdministratorAccess
       RoleName: testLambda
   
-  LambdaOrgFunction:
+  ProducerFunction:
     Type: "AWS::Lambda::Function"
     Properties:
       Code: 
         S3Bucket: testing-org-lambda
-        S3Key: testLambda.zip
-      Handler: testLambda.lambda_handler
+        S3Key: producer.zip
+      Handler: producer.lambda_handler
       Role: !GetAtt LambdaAdminRole.Arn
       Runtime: python3.7
-      FunctionName: testLambda
-      Timeout: 60
+      FunctionName: producer
+      MemorySize: 512
+      Timeout: 30
+      Environment:
+        Variables:
+          NextQueue: !Ref FirstQueue
+          SlackArn: !Ref SlackTopic
+
+  LogicFunction:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Code: 
+        S3Bucket: testing-org-lambda
+        S3Key: logic.zip
+      Handler: logic.lambda_handler
+      Role: !GetAtt LambdaAdminRole.Arn
+      Runtime: python3.7
+      FunctionName: logic
+      MemorySize: 512
+      Timeout: 30
+      Environment:
+        Variables:
+          LambdaName: Logic
+          NextQueue: !Ref SecondQueue
+          SecondQueue: !Ref FourthQueue
+          SlackArn: !Ref SlackTopic
+
+  CreateOuFunction:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Code: 
+        S3Bucket: testing-org-lambda
+        S3Key: createOu.zip
+      Handler: createOu.lambda_handler
+      Role: !GetAtt LambdaAdminRole.Arn
+      Runtime: python3.7
+      FunctionName: createOu
+      MemorySize: 512
+      Timeout: 30
+      Environment:
+        Variables:
+          LambdaName: CreateOu
+          InvokeLambda: !Ref LogicFunction
+          SlackArn: !Ref SlackTopic
+
+
+  CreateAccountFunction:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Code: 
+        S3Bucket: testing-org-lambda
+        S3Key: createAccount.zip
+      Handler: createAccount.lambda_handler
+      Role: !GetAtt LambdaAdminRole.Arn
+      Runtime: python3.7
+      FunctionName: createAccount
+      MemorySize: 512
+      Timeout: 30
+      Environment:
+        Variables:
+          LambdaName: CreateAccount
+          NextQueue: !Ref ThirdQueue
+          SlackArn: !Ref SlackTopic      
+
+  MoveAccountFunction:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Code: 
+        S3Bucket: testing-org-lambda
+        S3Key: moveAccount.zip
+      Handler: moveAccount.lambda_handler
+      Role: !GetAtt LambdaAdminRole.Arn
+      Runtime: python3.7
+      FunctionName: moveAccount
+      MemorySize: 512
+      Timeout: 30
+      Environment:
+        Variables:
+          LambdaName: MoveAccount
+          InvokeLambda: !Ref LogicFunction
+          SlackArn: !Ref SlackTopic
+
+  StacksetFunction:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Code: 
+        S3Bucket: testing-org-lambda
+        S3Key: stackset.zip
+      Handler: stackset.lambda_handler
+      Role: !GetAtt LambdaAdminRole.Arn
+      Runtime: python3.7
+      FunctionName: stackset
+      MemorySize: 512
+      Timeout: 30
+      Environment:
+        Variables:
+          LambdaName: Stackset
+          NextQueue: !Ref FifthQueue
+          SlackArn: !Ref SlackTopic 
+
+  CreateTrailFunction:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Code: 
+        S3Bucket: testing-org-lambda
+        S3Key: createTrail.zip
+      Handler: createTrail.lambda_handler
+      Role: !GetAtt LambdaAdminRole.Arn
+      Runtime: python3.7
+      FunctionName: createTrail
+      MemorySize: 512
+      Timeout: 30
+      Environment:
+        Variables:
+          LambdaName: CreateTrail
+          SlackArn: !Ref SlackTopic 
+  
+  DeadLetterQueue:
+    Type: "AWS::SQS::Queue"
+    Properties:
+      FifoQueue: true
+      MessageRetentionPeriod: 1209600
   
   FirstQueue:
     Type: "AWS::SQS::Queue"
     Properties:
       ContentBasedDeduplication: false
       FifoQueue: true
-      MaximumMessageSize: 256
-      MessageRetentionPeriod: 4
-      QueueName: ouQueue
-      VisibilityTimeout: 300
-  
+      ReceiveMessageWaitTimeSeconds: 20
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt DeadLetterQueue.Arn
+        maxReceiveCount: 1
+      VisibilityTimeout: 150
 
-
-  TriggerOrgLambda:
-    Type: "Custom::TriggerOrgLambda"
+  SecondQueue:
+    Type: "AWS::SQS::Queue"
     Properties:
-      ServiceToken: !GetAtt LambdaOrgFunction.Arn
-      LoggingEmail: !Ref LoggingAccountEmail
+      ContentBasedDeduplication: false
+      FifoQueue: true
+      ReceiveMessageWaitTimeSeconds: 20
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt DeadLetterQueue.Arn
+        maxReceiveCount: 1
+      VisibilityTimeout: 150
+
+  ThirdQueue:
+    Type: "AWS::SQS::Queue"
+    Properties:
+      ContentBasedDeduplication: false
+      FifoQueue: true
+      ReceiveMessageWaitTimeSeconds: 20
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt DeadLetterQueue.Arn
+        maxReceiveCount: 1
+      VisibilityTimeout: 150
+
+  FourthQueue:
+    Type: "AWS::SQS::Queue"
+    Properties:
+      ContentBasedDeduplication: false
+      FifoQueue: true
+      ReceiveMessageWaitTimeSeconds: 20
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt DeadLetterQueue.Arn
+        maxReceiveCount: 1
+      VisibilityTimeout: 150
+
+  FifthQueue:
+    Type: "AWS::SQS::Queue"
+    Properties:
+      ContentBasedDeduplication: false
+      FifoQueue: true
+      ReceiveMessageWaitTimeSeconds: 20
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt DeadLetterQueue.Arn
+        maxReceiveCount: 1
+      VisibilityTimeout: 150
+
+  TriggerFirstFunction:
+    Type: "AWS::Lambda::EventSourceMapping"
+    Properties:
+      EventSourceArn: !GetAtt FirstQueue.Arn
+      FunctionName: !Ref CreateOuFunction
+
+  TriggerSecondFunction:
+    Type: "AWS::Lambda::EventSourceMapping"
+    Properties:
+      BatchSize: 1
+      EventSourceArn: !GetAtt SecondQueue.Arn
+      FunctionName: !Ref CreateAccountFunction
+
+  TriggerThirdFunction:
+    Type: "AWS::Lambda::EventSourceMapping"
+    Properties:
+      BatchSize: 1
+      EventSourceArn: !GetAtt ThirdQueue.Arn
+      FunctionName: !Ref MoveAccountFunction
+
+  TriggerFourthFunction:
+    Type: "AWS::Lambda::EventSourceMapping"
+    Properties:
+      BatchSize: 1
+      EventSourceArn: !GetAtt FourthQueue.Arn
+      FunctionName: !Ref StacksetFunction
+
+  TriggerFifthFunction:
+    Type: "AWS::Lambda::EventSourceMapping"
+    Properties:
+      EventSourceArn: !GetAtt FifthQueue.Arn
+      FunctionName: !Ref CreateTrailFunction
+
+  LoggingEmail:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Type: String 
+      Description: Email address used to create logging account
+      Value: !Ref LoggingAccountEmail
+      Name: !Sub /org-assemble/emails/logging-${AWS::AccountId}
+  
+  DevEmail:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Type: String 
+      Description: Email address used to create dev account
+      Value: !Ref DevAccountEmail
+      Name: !Sub /org-assemble/emails/dev-${AWS::AccountId}
+
+  StagingEmail:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Type: String 
+      Description: Email address used to create staging account
+      Value: !Ref StagingAccountEmail
+      Name: !Sub /org-assemble/emails/staging-${AWS::AccountId}
+  
+  ProdEmail:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Type: String 
+      Description: Email address used to create prod account
+      Value: !Ref ProdAccountEmail
+      Name: !Sub /org-assemble/emails/prod-${AWS::AccountId}
+
+
+  SlackFunction:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Code: 
+        S3Bucket: testing-org-lambda
+        S3Key: slack.zip
+      Handler: slack.lambda_handler
+      Role: !GetAtt LambdaAdminRole.Arn
+      Runtime: python3.7
+      FunctionName: slack
+      Timeout: 30
+      MemorySize: 512
+  
+  SlackTopic:
+    Type: "AWS::SNS::Topic"
+    Properties:
+      Subscription:
+        - Endpoint: !GetAtt SlackFunction.Arn
+          Protocol: lambda
+
+  SlackTopicPermission:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt SlackFunction.Arn
+      Principal: sns.amazonaws.com
+      SourceArn: !Ref SlackTopic
+
+  # TriggerProducer:
+  #   DependsOn:
+  #     - SlackTopicPermission
+  #   Type: "Custom::TriggerProducer"
+  #   Properties:
+  #     ServiceToken: !GetAtt ProducerFunction.Arn
+  #     LoggingEmail: !Ref LoggingAccountEmail
+  #     SlackWebHook: !Ref SlackWebHookUrl
+  
+# Outputs:
+  

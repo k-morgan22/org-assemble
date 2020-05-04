@@ -2,91 +2,72 @@ AWSTemplateFormatVersion: 2010-09-09
 Description: Create SNS topic for slack chatbot & chatOps
   
 Parameters:
-  SlackWorkspaceId:
-    Description: ID of the slack workspace authorized with AWS Chatbot
+  SlackWebHookUrl:
+    Description: Incoming WebHooks Integration for slack channel messaging 
     Type: String
-    MinLength: 6
-    MaxLength: 64 
-  SlackChannelId:
-    Description: ID of the slack channel
-    Type: String
-    MinLength: 6
-    MaxLength: 64 
 
 
 Metadata:
   AWS::CloudFormation::Interface:
     ParameterGroups:
-    - Label: 
-        default: Slack -- Chatbot Authorization Details
+    - Label:
+        default: Slack Channel Messaging Configuration 
       Parameters:
-      - SlackWorkspaceId
-      - SlackChannelId
+      - SlackWebHookUrl
     
     ParameterLabels:
-      SlackWorkspaceId:
-        default: Slack Workspace Id 
-      SlackChannelId:
-        default: Slack Channel Id
+      SlackWebHookUrl:
+        default: Slack WebHook Url
 
   
 Resources:
+  SlackFunction:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Code: 
+        S3Bucket: testing-org-lambda
+        S3Key: slack.zip
+      Handler: slack.lambda_handler
+      Role: !ImportValue LambdaRole
+      Runtime: python3.7
+      FunctionName: slack
+      Timeout: 30
+  
   SlackTopic:
     Type: "AWS::SNS::Topic"
-
-  ChatbotRole:
-    Type: "AWS::IAM::Role"
     Properties:
-      AssumeRolePolicyDocument: 
-        Version: "2012-10-17"
-        Statement:
-        - Effect: Allow
-          Principal:
-            Service: chatbot.amazonaws.com
-          Action: sts:AssumeRole
-      Description: Allow Chatbot to post in slack
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/AdministratorAccess
-      MaxSessionDuration: 3600
-      RoleName: chatbotPermissions
+      Subscription:
+        - Endpoint: !GetAtt SlackFunction.Arn
+          Protocol: lambda
 
-  Chatbot:
-    Type: "AWS::Chatbot::SlackChannelConfiguration"
+  SlackTopicPermission:
+    Type: "AWS::Lambda::Permission"
     Properties:
-      SlackWorkspaceId: !Ref SlackWorkspaceId
-      SlackChannelId: !Ref SlackChannelId
-      ConfigurationName: lambda-destinations-notification
-      IamRoleArn: !GetAtt ChatbotRole.Arn
-      SnsTopicArns:
-        - !Ref SlackTopic
-      LoggingLevel: NONE
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt SlackFunction.Arn
+      Principal: sns.amazonaws.com
+      SourceArn: !Ref SlackTopic
 
+  OnFailureTopic:
+    Type: "AWS::SNS::Topic"
+    Properties:
+      Subscription:
+        - Endpoint: !GetAtt SlackFunction.Arn
+          Protocol: lambda
 
-  # ChatbotPolicy:
-  #   Type: "AWS::IAM::Policy"
-  #   Properties:
-  #     Groups:
-  #       - String
-  #     PolicyDocument: Json #required
-  #     PolicyName: String #required
-  #     Roles:
-  #       - String
-  #     Users:
-  #       - String
-  
-
-  # TopicPolicy:
-  #   Type: "AWS::SNS::TopicPolicy"
-  #   Properties:
-  #     PolicyDocument: Json #required
-  #     Topics: #required
-  #       - String
+  OnFailureTopicPermission:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt SlackFunction.Arn
+      Principal: sns.amazonaws.com
+      SourceArn: !Ref OnFailureTopic
   
   
 Outputs:
   SlackTopicArn:
-    Description: Topic Arn 
+    Description: Success Topic Arn 
     Value: !Ref SlackTopic
-  ChatbotArn:
-    Description: Chatbot Arn
-    Value: !Ref Chatbot 
+  OnFailureArn:
+    Description: Failure Topic Arn
+    Value: !Ref  OnFailureTopic

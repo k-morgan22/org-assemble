@@ -1,87 +1,100 @@
 import json
 import boto3
 from botocore.vendored import requests
+from uuid import uuid4
+import os
 
 
 lambdaClient = boto3.client('lambda')
 sqs = boto3.client('sqs')
+sns = boto3.client('sns')
 
 
 
 def sendResponse(event, context, responseStatus, responseData = None):
-    responseUrl = event['ResponseURL']
-    print(responseUrl)
- 
-    responseBody = {}
-    responseBody['Status'] = responseStatus
-    responseBody['Reason'] = 'See print statements in console'
-    responseBody['PhysicalResourceId'] = event['ResourceProperties']['ServiceToken']
-    responseBody['StackId'] = event['StackId']
-    responseBody['RequestId'] = event['RequestId']
-    responseBody['LogicalResourceId'] = event['LogicalResourceId']
-    responseBody['Data'] = responseData
- 
-    json_responseBody = json.dumps(responseBody)
-    print("Response body:\n" + json_responseBody)
- 
- 
-    try:
-        response = requests.put(responseUrl,
-                                data=json_responseBody)
-        print("Status code: " + response.status)
-        
-    except Exception as e:
-        print("send response to cloudformation failed: " + str(e))
+  responseUrl = event['ResponseURL']
+  print(responseUrl)
+
+  responseBody = {}
+  responseBody['Status'] = responseStatus
+  responseBody['Reason'] = 'See print statements in console'
+  responseBody['PhysicalResourceId'] = event['ResourceProperties']['ServiceToken']
+  responseBody['StackId'] = event['StackId']
+  responseBody['RequestId'] = event['RequestId']
+  responseBody['LogicalResourceId'] = event['LogicalResourceId']
+  responseBody['Data'] = responseData
+
+  json_responseBody = json.dumps(responseBody)
+  print("Response body:\n" + json_responseBody)
+
+  try:
+    response = requests.put(responseUrl,
+                            data=json_responseBody)
+    print("Status code: " + response.status)
+      
+  except:
+    print("send response to cloudformation failed")
 
 
 def deleteResponse(event, context):
-    try:
-        delete = lambdaClient.delete_function(
-            FunctionName = event['ResourceProperties']['ServiceToken']
-        )
-        print("deleting lambda...")
-        sendResponse(event, context, "SUCCESS", {})
-    except ClientError as e:
-        print(e)
-        sendResponse(event, context, "FAILED", {})
+  try:
+    delete = lambdaClient.delete_function(
+        FunctionName = event['ResourceProperties']['ServiceToken']
+    )
+    print("deleting lambda...")
+    sendResponse(event, context, "SUCCESS", {})
+  except:
+    sendResponse(event, context, "FAILED", {})
+
+def sendMessage(url, messageBody):
+  response = sqs.send_message(
+    QueueUrl = url,
+    MessageBody = messageBody,
+    MessageDeduplicationId= uuid4().hex,
+    MessageGroupId='1'
+  )
+
+
+def slackPublish(arn, status, function, text):
+  payload = {
+    "condition": status,
+    "function": function,
+    "text": text
+  }
+  response = sns.publish(
+    TopicArn = arn, 
+    Message=json.dumps({'default': json.dumps(payload)}),
+    MessageStructure='json'
+  ) 
 
 
 def lambda_handler(event, context):
-    lambdaArn = event['ResourceProperties']['ServiceToken']
-    loggingEmail = event['ResourceProperties']['LoggingEmail']
-    
-    
-    if(event['RequestType'] == 'Create'):
-        try:
-            initialQueue = sqs.get_queue_url(
-                QueueName = ''
-            )
+  lambdaArn = event['ResourceProperties']['ServiceToken']
+  queueUrl = os.environ['NextQueue']
+  topicArn = os.environ['SlackArn']
+  
+  
+  if(event['RequestType'] == 'Create'):
+    try:
 
-            payload = { 'LoggingEmail': loggingEmail }
-            
-            batchResponse = sqs.send_message_batch(
-                QueueUrl = initialQueue,
-                Entries = [
-                    {
-                        'Id': '1',
-                        'MessageBody': JSON.stringify(payload)
-                    },
-                    {
-                        'Id': '2',
-                        'MessageBody': JSON.stringify(payload)
-                    }
-                ]
-            )
+      sendMessage(queueUrl, "create organizational units!")
+    
 
-            sendResponse(event, context, "SUCCESS", {})
-        except:
-            print("failed")
-            
-            
-    if(event['RequestType'] == 'Update'):
-        sendResponse(event, context, "SUCCESS", {})
-    elif(event['RequestType'] == 'Delete'):
-        try:
-            deleteResponse(event, context)
-        except:
-            print("Could not initiate delete response")
+      sendResponse(event, context, "SUCCESS", {})
+    except:
+      slackPublish(topicArn, "failed", "producer", None)
+      sendResponse(event, context, "FAILED", {})
+          
+          
+  if(event['RequestType'] == 'Update'):
+    try:
+      sendResponse(event, context, "SUCCESS", {})
+    except:
+      slackPublish(topicArn, "failed", "producer", None)
+      sendResponse(event, context, "FAILED", {})      
+  elif(event['RequestType'] == 'Delete'):
+    try:
+      deleteResponse(event, context)
+    except:
+      slackPublish(topicArn, "failed", "producer", None)
+      sendResponse(event, context, "FAILED", {})

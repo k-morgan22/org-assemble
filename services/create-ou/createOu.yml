@@ -1,0 +1,45 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Resources needed to run createOu.py
+  
+Resources:
+  CreateOuFunction:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Code: 
+        S3Bucket: testing-org-lambda
+        S3Key: createOu.zip
+      Handler: createOu.lambda_handler
+      Role: !ImportValue LambdaRole
+      Runtime: python3.7
+      FunctionName: createOu
+      Timeout: 30
+  
+  FirstQueue:
+    Type: "AWS::SQS::Queue"
+    Properties:
+      ContentBasedDeduplication: false
+      FifoQueue: true
+      ReceiveMessageWaitTimeSeconds: 20
+      RedrivePolicy:
+        deadletterTargetArn: !ImportValue DeadLetterQueue
+        maxReceiveCount: 5
+      VisibilityTimeout: 150
+
+  TriggerFirstFunction:
+    Type: "AWS::Lambda::EventSourceMapping"
+    Properties:
+      EventSourceArn: !GetAtt FirstQueue.Arn
+      FunctionName: !Ref CreateOuFunction
+
+  CreateOuDestinations:
+    Type: "AWS::Lambda::EventInvokeConfig"
+    Properties:
+      FunctionName: !Ref CreateOuFunction
+      MaximumRetryAttempts: 0
+      MaximumEventAgeInSeconds: 60
+      DestinationConfig:
+        OnSuccess:
+          Destination: !ImportValue SlackTopic
+        OnFailure:
+          Destination: !ImportValue OnFailureTopic
+      Qualifier: '$LATEST'

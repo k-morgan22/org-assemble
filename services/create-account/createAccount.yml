@@ -1,0 +1,45 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Resources needed to run createAccount.py
+  
+Resources:  
+  CreateAccountFunction:  
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Code: 
+        S3Bucket: testing-org-lambda
+        S3Key: createAccount.zip
+      Handler: createAccount.lambda_handler
+      Role: !ImportValue LambdaRole
+      Runtime: python3.7
+      FunctionName: createAccount
+      Timeout: 30
+  
+  SecondQueue:
+    Type: "AWS::SQS::Queue"
+    Properties:
+      ContentBasedDeduplication: false
+      FifoQueue: true
+      ReceiveMessageWaitTimeSeconds: 20
+      RedrivePolicy:
+        deadletterTargetArn: !ImportValue DeadLetterQueue
+        maxReceiveCount: 5
+      VisibilityTimeout: 150
+
+  TriggerSecondFunction:
+    Type: "AWS::Lambda::EventSourceMapping"
+    Properties:
+      EventSourceArn: !GetAtt SecondQueue.Arn
+      FunctionName: !Ref CreateAccountFunction
+
+  CreateAccountDestinations:
+    Type: "AWS::Lambda::EventInvokeConfig"
+    Properties:
+      FunctionName: !Ref CreateAccountFunction
+      MaximumRetryAttempts: 0
+      MaximumEventAgeInSeconds: 60
+      DestinationConfig:
+        OnSuccess:
+          Destination: !ImportValue SlackTopic
+        OnFailure:
+          Destination: !ImportValue OnFailureTopic
+      Qualifier: '$LATEST'

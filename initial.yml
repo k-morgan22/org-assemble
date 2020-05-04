@@ -382,8 +382,6 @@ Resources:
     Type: "Custom::TriggerProducer"
     Properties:
       ServiceToken: !GetAtt ProducerFunction.Arn
-      LoggingEmail: !Ref LoggingAccountEmail
-      SlackWebHook: !Ref SlackWebHookUrl
   
 # Outputs:
   

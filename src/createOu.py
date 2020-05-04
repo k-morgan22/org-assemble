@@ -6,7 +6,27 @@ import os
 lambdaClient = boto3.client('lambda')
 ssm = boto3.client('ssm')
 sns = boto3.client('sns')
+org = boto3.client('organizations')
 
+#business logic
+
+def grabMasterId():
+  
+  listRoots = org.list_roots()
+  
+  return listRoots['Roots'][0]['Id']
+
+
+def createOrgUnit(rootId, ouName):
+
+  ouResponse = org.create_organizational_unit(
+    ParentId = rootId,
+    Name = ouName
+  )
+  
+  return ouResponse['OrganizationalUnit']['Id']
+
+#communication logic
 
 def invoke(funct):
   payload = {
@@ -43,7 +63,7 @@ def lambda_handler(event, context):
 
   try:
     
-    masterId = 'r-' + str(uuid4())
+    masterId = grabMasterId()
     masterName = '/org-assemble/orgIds/master-'+ str(uuid4())
     
     putParameter = ssm.put_parameter(
@@ -53,11 +73,9 @@ def lambda_handler(event, context):
       Type = 'String'
     )
   
-    securityId = 'o-' + str(uuid4())
-    workloadsId = 'o-' + str(uuid4())
+    securityId = createOrgUnit(masterId, "Security")
+    workloadsId = createOrgUnit(masterId, "Workloads")
     
-    
-
     securityName = '/org-assemble/orgIds/security-'+ str(uuid4())
     putParameter = ssm.put_parameter(
       Name = securityName,
@@ -77,4 +95,3 @@ def lambda_handler(event, context):
     invoke(nextFunct)
   except:
     slackPublish(topicArn, "failed", lambdaName, None)
-    

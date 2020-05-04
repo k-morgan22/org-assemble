@@ -6,6 +6,9 @@ import os
 lambdaClient = boto3.client('lambda')
 ssm = boto3.client('ssm')
 sns = boto3.client('sns')
+org = boto3.client('organizations')
+
+# business logic
 
 def getaccountId(path, accountName):
   response = ssm.get_parameters_by_path(
@@ -34,6 +37,17 @@ def getOrgIds(path, decryption):
     elif 'workloads' in param['Name']:
       workloads = param['Value']
   return master, security, workloads
+
+
+def moveAccount(newAccountId, rootId, destinationId):
+
+  moveResponse = org.move_account(
+    AccountId = newAccountId,
+    SourceParentId = rootId,
+    DestinationParentId = destinationId
+  )
+
+# communication logic
 
 def invoke(funct):
   payload = {
@@ -73,6 +87,11 @@ def lambda_handler(event, context):
     accountId = getaccountId('/org-assemble/accountIds', accountName)
     [masterId, securityId, workloadsId] = getOrgIds('/org-assemble/orgIds', False)
 
+
+    if(accountName == 'logging'):
+      moveAccount(accountId, masterId, securityId)
+    else:
+      moveAccount(accountId, masterId, workloadsId)
 
     invoke(nextFunct)
   except:

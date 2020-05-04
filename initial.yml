@@ -192,7 +192,7 @@ Resources:
       Runtime: python3.7
       FunctionName: stackset
       MemorySize: 512
-      Timeout: 30
+      Timeout: 400
       Environment:
         Variables:
           LambdaName: Stackset
@@ -210,7 +210,7 @@ Resources:
       Runtime: python3.7
       FunctionName: createTrail
       MemorySize: 512
-      Timeout: 30
+      Timeout: 400
       Environment:
         Variables:
           LambdaName: CreateTrail
@@ -264,7 +264,7 @@ Resources:
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt DeadLetterQueue.Arn
         maxReceiveCount: 5
-      VisibilityTimeout: 300
+      VisibilityTimeout: 900
 
   FifthQueue:
     Type: "AWS::SQS::Queue"
@@ -275,7 +275,7 @@ Resources:
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt DeadLetterQueue.Arn
         maxReceiveCount: 5
-      VisibilityTimeout: 300
+      VisibilityTimeout: 900
 
   TriggerFirstFunction:
     Type: "AWS::Lambda::EventSourceMapping"

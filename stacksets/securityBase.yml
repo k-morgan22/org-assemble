@@ -68,7 +68,7 @@ Resources:
       Type: String 
       Description: Arn of the cloudtrail bucket
       Value: !GetAtt cloudtrailBucket.Arn
-      Name: /org-assemble/logAccountBucket/cloudtrail-5c81107d-ec46-444f-9ca6-e589447653bc
+      Name: !Sub /org-assemble/logAccountBucket/cloudtrail-5c81107d-ec46-${AWS::AccountId}
 
 Outputs:
   LoggingBucketName: 

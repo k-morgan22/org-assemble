@@ -62,14 +62,6 @@ Resources:
               StringEquals:
                 s3:x-amz-acl: 'bucket-owner-full-control'
   
-  loggingBucketParam:
-    Type: "AWS::SSM::Parameter"
-    Properties:
-      Type: String 
-      Description: Arn of the cloudtrail bucket
-      Value: !GetAtt cloudtrailBucket.Arn
-      Name: !Sub /org-assemble/logAccountBucket/cloudtrail-5c81107d-ec46-${AWS::AccountId}
-
 Outputs:
   LoggingBucketName: 
     Description: Centralized logging bucket

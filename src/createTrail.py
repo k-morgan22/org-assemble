@@ -2,7 +2,7 @@ import json
 import boto3
 import os
 
-# lambdaClient = boto3.client('lambda')
+lambdaClient = boto3.client('lambda')
 ssm = boto3.client('ssm')
 sns = boto3.client('sns')
 sts = boto3.client('sts')
@@ -11,53 +11,44 @@ trail = boto3.client('cloudtrail')
 
 # business logic
 
-def getLogBucket(path, decryption):
+def getAccountIds(path, decryption):
   response = ssm.get_parameters_by_path(
     Path = path,
     Recursive = True,
     WithDecryption = decryption
   )
   
-  for param in response['Parameters']:
-    if 'cloudtrail' in param['Name']:
-      return param['Value']
-
-
-def getEnvBuckets(path, decryption):
-  response = ssm.get_parameters_by_path(
-    Path = path,
-    Recursive = True,
-    WithDecryption = decryption
-  )
-  
-  buckets = []
+  envList = []
   
   for param in response['Parameters']:
-    buckets.append(param['Value'])
+    if 'logging' in param['Name']:
+      logging = param['Value']
+    else:
+      envList.append(param['Value'])
   
-  return buckets
+  return envList, logging
   
-def createTrail(trail, bucketArn):
+def createTrail(trailName, bucketName):
   trailAccess = org.enable_aws_service_access(
     ServicePrincipal='cloudtrail.amazonaws.com'
   )
-  
-  response = trail.create_trail(
-    Name = trail,
-    S3BucketName = bucketArn,
+
+  create = trail.create_trail(
+    Name = trailName,
+    S3BucketName = bucketName,
     IncludeGlobalServiceEvents = True,
     IsMultiRegionTrail = True,
     EnableLogFileValidation = True,
     IsOrganizationTrail = True
   )
-  
+
   startLogging = trail.start_logging(
-    Name = trail
+    Name = trailName
   )
 
-def addEvents(trail, buckets):
+def addEvents(trailName, buckets):
   addEvents = trail.put_event_selectors(
-    TrailName = trail,
+    TrailName = trailName,
     EventSelectors = [
       {
         'DataResources': [
@@ -93,13 +84,15 @@ def lambda_handler(event, context):
 
 
   try:
-    logBucket = getLogBucket('/org-assemble/logAccountBucket', False)
-    bucketList = getEnvBuckets('/org-assemble/envAccountBucket', False)
+    envAccounts, logAccount = getAccountIds('/org-assemble/accountIds', False)
     trailName = "organization-trail-DO-NOT-DELETE"
+    logBucket = f'{logAccount}-cloudtrail-logs-do-not-delete'
+    accountBuckets = [f'arn:aws:s3:::{account}-storage-bucket/' for account in envAccounts]
+    
     createTrail(trailName, logBucket)
-    addEvents(trailName, bucketList)
+    addEvents(trailName, accountBuckets)
 
     
-    slackPublish(topicArn, "success", None, "Finished assembling your AWS organization")
+    slackPublish(topicArn, "success", None, "Organization Trail started logging")
   except:
     slackPublish(topicArn, "failed", lambdaName, None)

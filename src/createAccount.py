@@ -2,11 +2,16 @@ import json
 import boto3
 from uuid import uuid4
 import os
+import time
 
 lambdaClient = boto3.client('lambda')
 sqs = boto3.client('sqs')
 ssm = boto3.client('ssm')
 sns = boto3.client('sns')
+org = boto3.client('organizations')
+
+
+# business logic
 
 def getEmail(path, accountName):
   response = ssm.get_parameters_by_path(
@@ -19,6 +24,31 @@ def getEmail(path, accountName):
     if accountName in param['Name']:
       return param['Value']
         
+
+
+def createAccount(accountEmail, accountName):
+
+  accountResponse = org.create_account(
+    Email=accountEmail,
+    AccountName=accountName,
+    RoleName='OrganizationAccountAccessRole',
+    IamUserAccessToBilling='DENY'
+
+  )
+
+  requestId = accountResponse['CreateAccountStatus']['Id']
+  while True:
+    accountStatus = org.describe_create_account_status(
+      CreateAccountRequestId=requestId
+    )
+    if accountStatus['CreateAccountStatus']['State'] == 'IN_PROGRESS':
+      time.sleep(2)
+    elif accountStatus['CreateAccountStatus']['State'] == 'SUCCEEDED':
+      accountId= accountStatus['CreateAccountStatus']['AccountId']
+      return accountId
+
+
+# communication logic
 
 def sendMessage(url, messageBody):
   response = sqs.send_message(
@@ -50,9 +80,8 @@ def lambda_handler(event, context):
 
   try:
     email = getEmail('/org-assemble/emails', accountName)
-    # use accountName.toUppercase() when creating account
-    accountId = uuid4().hex
-    
+    accountId = createAccount(email, accountName.capitalize())
+
     randomName = '/org-assemble/accountIds/' + accountName + '-' + str(uuid4())
     putParameter = ssm.put_parameter(
       Name = randomName,
@@ -64,4 +93,3 @@ def lambda_handler(event, context):
     sendMessage(queueUrl, accountName)
   except:
     slackPublish(topicArn, "failed", lambdaName, None)
-  

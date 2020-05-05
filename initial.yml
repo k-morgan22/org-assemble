@@ -191,8 +191,8 @@ Resources:
       Role: !GetAtt LambdaAdminRole.Arn
       Runtime: python3.7
       FunctionName: stackset
-      MemorySize: 512
-      Timeout: 30
+      MemorySize: 1024
+      Timeout: 900
       Environment:
         Variables:
           LambdaName: Stackset
@@ -264,7 +264,7 @@ Resources:
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt DeadLetterQueue.Arn
         maxReceiveCount: 5
-      VisibilityTimeout: 300
+      VisibilityTimeout: 1800
 
   FifthQueue:
     Type: "AWS::SQS::Queue"

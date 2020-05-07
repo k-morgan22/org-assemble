@@ -28,7 +28,7 @@ def getOuIds(path, decryption):
   return security, workloads
 
 
-def createStackSets():
+def createBaseStack():
   
   baselineStackName = "account-baseline-" + str(uuid4())  
   
@@ -46,6 +46,9 @@ def createStackSets():
     }
   )
   
+  return baselineStackName
+  
+def createLogStack():  
 
   loggingStackName = "logging-baseline-" + str(uuid4())  
   
@@ -60,9 +63,8 @@ def createStackSets():
     }
   )
   
-  return baselineStackName,loggingStackName
+  return loggingStackName
 
-  
   
 def deployLoggingStack(stackName, ou):
   deployLogResponse = cf.create_stack_instances(
@@ -122,6 +124,18 @@ def deployBaselineStack(stackName, ou):
 
 # communication logic
 
+def invoke():
+  payload = {
+    "origin": "stackset"
+  }
+
+  response = lambdaClient.invoke(
+    FunctionName = 'logic',
+    InvocationType = 'Event',
+    LogType = 'None',
+    Payload = json.dumps(payload)
+  )
+
 def sendMessage(url, messageBody):
   response = sqs.send_message(
     QueueUrl = url,
@@ -148,16 +162,23 @@ def lambda_handler(event, context):
   lambdaName = os.environ['LambdaName']
   queueUrl = os.environ['NextQueue']
   topicArn = os.environ['SlackArn']
+  stack = event['Records'][0]['body']
 
 
   try:
-    [securityId, workloadsId] = getOuIds('/org-assemble/orgIds', False)
-    [envStackName,loggingStackName] = createStackSets()
-    
-    deployLoggingStack(loggingStackName, securityId)
-    deployBaselineStack(envStackName, workloadsId)
-
-    sendMessage(queueUrl, "stacksets deployed")
-    slackPublish(topicArn, "success", None, "Security and Env Account baselines deployed")
+    if(stack == 'log stack'):
+      securityId, workloadsId = getOuIds('/org-assemble/orgIds', False)
+      loggingStackName = createLogStack()
+      deployLoggingStack(loggingStackName, securityId)
+      
+      invoke()
+      slackPublish(topicArn, "success", None, "Security baseline deployed")
+    elif(stack == 'base stack'):
+      securityId, workloadsId = getOuIds('/org-assemble/orgIds', False)
+      envStackName = createBaseStack()
+      deployBaselineStack(envStackName, workloadsId)
+  
+      sendMessage(queueUrl, "stacksets deployed")
+      slackPublish(topicArn, "success", None, "Env Account baselines deployed")
   except:
     slackPublish(topicArn, "failed", lambdaName, None)

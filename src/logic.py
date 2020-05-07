@@ -95,6 +95,14 @@ def checkAccount(QueueName, snsArn):
     slackPublish(snsArn, "success", None, "All accounts created and moved to the correct Organizational Unit")
 
 
+def runStackset(QueueName):
+  response = sqs.send_message(
+    QueueUrl = QueueName,
+    MessageBody = "base stack",
+    MessageDeduplicationId= uuid4().hex,
+    MessageGroupId='1'
+  )
+
 
 def messageFormat(body):
   message = {
@@ -107,7 +115,7 @@ def sendMessages(entries, url):
   if (entries == 1):
     response = sqs.send_message(
       QueueUrl = url,
-      MessageBody = "accounts created",
+      MessageBody = "log stack",
       MessageDeduplicationId= uuid4().hex,
       MessageGroupId='1'
     )
@@ -143,7 +151,9 @@ def lambda_handler(event, context):
       checkOu(queueUrl, topicArn)
     elif(event['origin'] == 'moveAccount'):
       checkAccount(secondUrl,topicArn)
-
+    elif(event['origin'] == 'stackset'):
+      runStackset(secondUrl)
+    
   except:
     slackPublish(topicArn, "failed", lambdaName, None)
   

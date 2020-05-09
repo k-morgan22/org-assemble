@@ -161,7 +161,8 @@ Resources:
         Variables:
           LambdaName: CreateAccount
           NextQueue: !Ref ThirdQueue
-          SlackArn: !Ref SlackTopic      
+          SlackArn: !Ref SlackTopic   
+          Self: !Ref SecondQueue
 
   MoveAccountFunction:
     Type: "AWS::Lambda::Function"

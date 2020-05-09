@@ -76,7 +76,11 @@ def deployLoggingStack(stackName, ou):
     },
     Regions=[
       'us-east-1'
-    ]
+    ],
+    OperationPreferences={
+      'FailureTolerancePercentage': 100,
+      'MaxConcurrentPercentage': 100
+    }
   )
   
   loggingOpId = deployLogResponse['OperationId']
@@ -89,8 +93,7 @@ def deployLoggingStack(stackName, ou):
 
     if deployLogStatus['StackSetOperation']['Status'] == 'RUNNING':
       time.sleep(2)
-      
-    if deployLogStatus['StackSetOperation']['Status'] == 'SUCCEEDED':  
+    elif deployLogStatus['StackSetOperation']['Status'] == 'SUCCEEDED':  
       break
     
 
@@ -105,7 +108,11 @@ def deployBaselineStack(stackName, ou):
     },
     Regions=[
       'us-east-1'
-    ]
+    ],
+    OperationPreferences={
+      'FailureTolerancePercentage': 100,
+      'MaxConcurrentPercentage': 100
+    }
   )
   
   baselineOpId = deployBaseResponse['OperationId']
@@ -117,8 +124,7 @@ def deployBaselineStack(stackName, ou):
     )
     if deployBaseStatus['StackSetOperation']['Status'] == 'RUNNING':
       time.sleep(2)
-      
-    if deployBaseStatus['StackSetOperation']['Status'] == 'SUCCEEDED':
+    elif deployBaseStatus['StackSetOperation']['Status'] == 'SUCCEEDED':
       break
 
 

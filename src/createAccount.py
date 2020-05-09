@@ -76,6 +76,7 @@ def lambda_handler(event, context):
   queueUrl = os.environ['NextQueue']
   topicArn = os.environ['SlackArn']
   accountName = event['Records'][0]['body']
+  selfQueue = os.environ['Self']
 
 
   try:
@@ -93,3 +94,4 @@ def lambda_handler(event, context):
     sendMessage(queueUrl, accountName)
   except:
     slackPublish(topicArn, "failed", lambdaName, None)
+    sendMessage(selfQueue, accountName)

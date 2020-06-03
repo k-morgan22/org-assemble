@@ -1,25 +1,12 @@
-import json
 import boto3
-from uuid import uuid4
-import os
+import logging
 
-lambdaClient = boto3.client('lambda')
 ssm = boto3.client('ssm')
-sns = boto3.client('sns')
 org = boto3.client('organizations')
 
-# business logic
-
-def getaccountId(path, accountName):
-  response = ssm.get_parameters_by_path(
-    Path = path,
-    Recursive = True,
-    WithDecryption = False
-  )
-  
-  for param in response['Parameters']:
-    if accountName in param['Name']:
-      return param['Value']
+#initialize logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 
 def getOrgIds(path, decryption):
@@ -39,6 +26,15 @@ def getOrgIds(path, decryption):
   return master, security, workloads
 
 
+def grabName(accountId):
+  response = org.describe_account(
+    AccountId = accountId
+  )
+
+  accountName = response['Account']['Name']
+  return accountName
+
+
 def moveAccount(newAccountId, rootId, destinationId):
 
   moveResponse = org.move_account(
@@ -47,52 +43,16 @@ def moveAccount(newAccountId, rootId, destinationId):
     DestinationParentId = destinationId
   )
 
-# communication logic
-
-def invoke(funct):
-  payload = {
-    "origin": "moveAccount"
-  }
-
-  response = lambdaClient.invoke(
-    FunctionName = funct,
-    InvocationType = 'Event',
-    LogType = 'None',
-    Payload = json.dumps(payload)
-  )
-
-
-def slackPublish(arn, status, function, text):
-  payload = {
-    "condition": status,
-    "function": function,
-    "text": text
-  }
-  response = sns.publish(
-    TopicArn = arn, 
-    Message=json.dumps({'default': json.dumps(payload)}),
-    MessageStructure='json'
-  )  
-
+# pre-handler global
+[masterId, securityId, workloadsId] = getOrgIds('/org-assemble/orgIds', False)
 
 def lambda_handler(event, context):
-  lambdaName = os.environ['LambdaName']
-  nextFunct = os.environ['InvokeLambda']
-  topicArn = os.environ['SlackArn']
-  accountName = event['Records'][0]['body']
+  accountId = event['accountId']
+  accountName = grabName(accountId)
 
-
-
-  try:
-    accountId = getaccountId('/org-assemble/accountIds', accountName)
-    [masterId, securityId, workloadsId] = getOrgIds('/org-assemble/orgIds', False)
-
-
-    if(accountName == 'logging'):
-      moveAccount(accountId, masterId, securityId)
-    else:
-      moveAccount(accountId, masterId, workloadsId)
-
-    invoke(nextFunct)
-  except:
-    slackPublish(topicArn, "failed", lambdaName, None)
+  if accountName == "Logging":
+    moveAccount(accountId, masterId, securityId)
+  elif accountName in ["Dev", "Staging", "Prod"]:  
+    moveAccount(accountId, masterId, workloadsId)
+  else:
+    logger.info("Accidental Trigger")

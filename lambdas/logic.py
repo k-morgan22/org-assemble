@@ -1,9 +1,13 @@
 import json
 import boto3
+import logging
 
 ssm = boto3.client('ssm')
 org = boto3.client('organizations')
 ebridge = boto3.client('events')
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 
 def getMasterId(path, decryption):
@@ -53,38 +57,35 @@ def checkOu():
     putEvent("createAccount")
 
 
+def checkAccount():
 
+  isSecurityCreated = False
+  isWorkloadsCreated = False
+  secList = []
+  workList = []
+    
+  securityAccounts = org.list_accounts_for_parent(
+    ParentId = securityId
+  )
+    
+  for account in securityAccounts['Accounts']:
+    secList.append(account['Name'])
+    
+  workloadsAccounts = org.list_accounts_for_parent(
+    ParentId = workloadsId
+  )
+    
+  for account in workloadsAccounts['Accounts']:
+    workList.append(account['Name'])
+    
+  if 'Logging' in secList:
+    isSecurityCreated = True
+    
+  if 'Dev' in workList and 'Prod' in workList and 'Staging' in workList:
+    isWorkloadsCreated = True
 
-# def checkAccount(QueueName, snsArn):
-
-#   isSecurityCreated = False
-#   isWorkloadsCreated = False
-#   secList = []
-#   workList = []
-    
-#   securityAccounts = org.list_accounts_for_parent(
-#     ParentId = securityId
-#   )
-    
-#   for account in securityAccounts['Accounts']:
-#     secList.append(account['Name'])
-    
-#   workloadsAccounts = org.list_accounts_for_parent(
-#     ParentId = workloadsId
-#   )
-    
-#   for account in workloadsAccounts['Accounts']:
-#     workList.append(account['Name'])
-    
-#   if 'Logging' in secList:
-#     isSecurityCreated = True
-    
-#   if 'Dev' in workList and 'Prod' in workList and 'Staging' in workList:
-#     isWorkloadsCreated = True
-
-#   if(isSecurityCreated and isWorkloadsCreated):
-#     sendMessages(1, QueueName)
-#     slackPublish(snsArn, "success", None, "All accounts created and moved to the correct Organizational Unit")
+  if(isSecurityCreated and isWorkloadsCreated):
+    putEvent("stackset")
   
 
 def putEvent(destination):
@@ -140,5 +141,8 @@ def lambda_handler(event, context):
     
   if event['eventName'] == "CreateOrganizationalUnit":
     checkOu()
-  # elif event['eventName'] == "MoveAccount":
-  #   checkAccount(secondUrl,topicArn)
+  elif event['eventName'] == "MoveAccount":
+    if "errorCode" not in event:
+      checkAccount()
+    else:
+      logger.info("Triggered by error")  

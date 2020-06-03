@@ -341,7 +341,7 @@ Resources:
             Type: SNS 
             Destination: !Ref onFailureTopic
       Events: 
-        trigger:
+        ouTrigger:
           Type: EventBridgeRule
           Properties:
             InputPath: $.detail
@@ -362,6 +362,22 @@ Resources:
                   organizationalUnit:
                     name:
                       - "Security"
+        moveTrigger:
+          Type: EventBridgeRule
+          Properties:
+            Pattern:
+              source: 
+                - aws.organizations
+              detail: 
+                userIdentity:
+                  sessionContext:
+                    sessionIssuer:
+                      arn: 
+                        - !GetAtt organizationRole.Arn 
+                eventName: 
+                  - "MoveAccount"
+                eventSource:
+                  - "organizations.amazonaws.com"
 
 
 ##########################################################################
@@ -462,23 +478,23 @@ Resources:
           OnFailure:
             Type: SNS 
             Destination: !Ref onFailureTopic
-      Events: 
-        trigger:
-          Type: EventBridgeRule
-          Properties:
-            Pattern:
-              source: 
-                - aws.organizations
-              detail: 
-                userIdentity:
-                  sessionContext:
-                    sessionIssuer:
-                      arn: 
-                        - !GetAtt organizationRole.Arn 
-                eventName: 
-                  - "MoveAccount"
-                eventSource:
-                  - "organizations.amazonaws.com"
+      # Events: 
+      #   trigger:
+      #     Type: EventBridgeRule
+      #     Properties:
+      #       Pattern:
+      #         source: 
+      #           - aws.organizations
+      #         detail: 
+      #           userIdentity:
+      #             sessionContext:
+      #               sessionIssuer:
+      #                 arn: 
+      #                   - !GetAtt organizationRole.Arn 
+      #           eventName: 
+      #             - "MoveAccount"
+      #           eventSource:
+      #             - "organizations.amazonaws.com"
                 
 
 
@@ -522,7 +538,7 @@ Resources:
       - createOuFunctiontriggerPermission
       - createAccountFunctiontriggerPermission
       - moveAccountFunctiontriggerPermission
-      - stacksetFunctiontriggerPermission
+      # - stacksetFunctiontriggerPermission
       - enableLoggingFunctiontriggerPermission
     Type: "Custom::TriggerProducer"
     Properties:

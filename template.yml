@@ -148,6 +148,7 @@ Resources:
                 Action: 
                   - organizations:*
                   - ssm:*
+                  - events:PutEvents
                 Resource: "*"
               - Effect: Allow 
                 Action:
@@ -319,6 +320,49 @@ Resources:
                     - "SUCCEEDED"
           
       
+##########################################################################
+#  Logic Function & Destination & EventBridge Rule               #
+##########################################################################
+  
+  logicFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: logic
+      CodeUri: lambdas/logic.py
+      Handler: logic.lambda_handler
+      Role: !GetAtt organizationRole.Arn
+      EventInvokeConfig: 
+        MaximumRetryAttempts: 2
+        DestinationConfig:
+          OnSuccess:
+            Type: SNS 
+            Destination: !Ref onSuccessTopic
+          OnFailure:
+            Type: SNS 
+            Destination: !Ref onFailureTopic
+      Events: 
+        trigger:
+          Type: EventBridgeRule
+          Properties:
+            InputPath: $.detail
+            Pattern:
+              source: 
+                - aws.organizations
+              detail:
+                userIdentity:
+                  sessionContext:
+                    sessionIssuer:
+                      arn: 
+                        - !GetAtt organizationRole.Arn                
+                eventName: 
+                  - "CreateOrganizationalUnit"
+                eventSource:
+                  - "organizations.amazonaws.com"
+                responseElements:
+                  organizationalUnit:
+                    name:
+                      - "Workloads" 
+                      - "Security"
 
 
 ##########################################################################
@@ -332,9 +376,6 @@ Resources:
       CodeUri: lambdas/createAccount.py
       Handler: createAccount.lambda_handler
       Role: !GetAtt organizationRole.Arn
-      Environment:
-        Variables:
-          accountName: !Ref AccountName
       EventInvokeConfig: 
         MaximumRetryAttempts: 2
         DestinationConfig:
@@ -378,9 +419,6 @@ Resources:
       CodeUri: lambdas/moveAccount.py
       Handler: moveAccount.lambda_handler
       Role: !GetAtt organizationRole.Arn
-      Environment:
-        Variables:
-          accountEmail: !Ref AccountEmail
       EventInvokeConfig: 
         MaximumRetryAttempts: 2
         DestinationConfig:
@@ -462,9 +500,6 @@ Resources:
       CodeUri: lambdas/enableLogging.py
       Handler: enableLogging.lambda_handler
       Role: !GetAtt accountSetupRole.Arn
-      Environment:
-        Variables:
-          accountEmail: !Ref AccountEmail
       EventInvokeConfig: 
         MaximumRetryAttempts: 2
         DestinationConfig:

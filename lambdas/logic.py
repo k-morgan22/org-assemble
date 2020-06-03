@@ -1,14 +1,9 @@
 import json
 import boto3
-from uuid import uuid4
-import os
 
-
-
-sns = boto3.client('sns')
-sqs = boto3.client('sqs')
 ssm = boto3.client('ssm')
 org = boto3.client('organizations')
+ebridge = boto3.client('events')
 
 
 def getMasterId(path, decryption):
@@ -39,8 +34,7 @@ def getOuIds(path, decryption):
   return security, workloads
     
 
-def checkOu(QueueName, snsArn):
-  rootId = getMasterId('/org-assemble/orgIds', False)
+def checkOu():
 
   isPresent = False
   ous = []
@@ -51,109 +45,100 @@ def checkOu(QueueName, snsArn):
 
   for ou in ouList['OrganizationalUnits']:
     ous.append(ou['Name'])
- 
+
   if 'Security' in ous and 'Workloads' in ous:
     isPresent = True
   
   if(isPresent):
-    sendMessages(4, QueueName)
-    slackPublish(snsArn, "success", None, "Security & Workloads organizational units have been created")
+    putEvent("createAccount")
 
 
 
 
-def checkAccount(QueueName, snsArn):
-  [securityId, workloadsId] = getOuIds('/org-assemble/orgIds', False)
+# def checkAccount(QueueName, snsArn):
+
+#   isSecurityCreated = False
+#   isWorkloadsCreated = False
+#   secList = []
+#   workList = []
+    
+#   securityAccounts = org.list_accounts_for_parent(
+#     ParentId = securityId
+#   )
+    
+#   for account in securityAccounts['Accounts']:
+#     secList.append(account['Name'])
+    
+#   workloadsAccounts = org.list_accounts_for_parent(
+#     ParentId = workloadsId
+#   )
+    
+#   for account in workloadsAccounts['Accounts']:
+#     workList.append(account['Name'])
+    
+#   if 'Logging' in secList:
+#     isSecurityCreated = True
+    
+#   if 'Dev' in workList and 'Prod' in workList and 'Staging' in workList:
+#     isWorkloadsCreated = True
+
+#   if(isSecurityCreated and isWorkloadsCreated):
+#     sendMessages(1, QueueName)
+#     slackPublish(snsArn, "success", None, "All accounts created and moved to the correct Organizational Unit")
   
-  isSecurityCreated = False
-  isWorkloadsCreated = False
-  secList = []
-  workList = []
-    
-  securityAccounts = org.list_accounts_for_parent(
-    ParentId = securityId
-  )
-    
-  for account in securityAccounts['Accounts']:
-    secList.append(account['Name'])
-    
-  workloadsAccounts = org.list_accounts_for_parent(
-    ParentId = workloadsId
-  )
-    
-  for account in workloadsAccounts['Accounts']:
-    workList.append(account['Name'])
-    
-  if 'Logging' in secList:
-    isSecurityCreated = True
-    
-  if 'Dev' in workList and 'Prod' in workList and 'Staging' in workList:
-    isWorkloadsCreated = True
 
-  if(isSecurityCreated and isWorkloadsCreated):
-    sendMessages(1, QueueName)
-    slackPublish(snsArn, "success", None, "All accounts created and moved to the correct Organizational Unit")
-
-
-def runStackset(QueueName):
-  response = sqs.send_message(
-    QueueUrl = QueueName,
-    MessageBody = "base stack",
-    MessageDeduplicationId= uuid4().hex,
-    MessageGroupId='1'
-  )
-
-
-def messageFormat(body):
-  message = {
-    'id': uuid4().hex,
-    'string': body
-  }
-  return message    
-
-def sendMessages(entries, url):
-  if (entries == 1):
-    response = sqs.send_message(
-      QueueUrl = url,
-      MessageBody = "log stack",
-      MessageDeduplicationId= uuid4().hex,
-      MessageGroupId='1'
+def putEvent(destination):
+  
+  if(destination == "stackset"):
+    details = {
+      "metadata": {
+        "service": "assembler-logic",
+        "operation": "checkAccount",
+        "status": "SUCCEEDED"
+      },
+      "data": {
+        "baseStackName": "log stackset"
+      }
+    }
+    response = ebridge.put_events(
+      Entries = [
+        {
+          'Source': 'assembler-logic',
+          'DetailType': 'org-assemble event',
+          'Detail': json.dumps(details) 
+        }
+      ]
     )
-  else:
-    messageBody = ["dev", "staging", "prod", "logging"]
-    messages_list = [messageFormat(each) for each in messageBody]
-    
-    response = sqs.send_message_batch(
-      QueueUrl = url,
-      Entries = [{'Id': message['id'], 'MessageBody': message['string'],'MessageDeduplicationId': message['id'],'MessageGroupId': '1'} for message in messages_list]
+  else: 
+    accountName = ["dev", "staging", "prod", "logging"]
+    details = [{
+      "metadata": {
+        "service": "assembler-logic",
+        "operation": "checkOu",
+        "status": "SUCCEEDED"
+      },
+      "data": {
+        "accountName": name 
+      }
+    }for name in accountName] 
+    response = ebridge.put_events(
+      Entries = [
+        {
+          'Source': 'assembler-logic',
+          'DetailType': 'org-assemble event',
+          'Detail': json.dumps(entry) 
+        } for entry in details
+      ]
     )
-    
-def slackPublish(arn, status, function, text):
-  payload = {
-    "condition": status,
-    "function": function,
-    "text": text
-  }
-  response = sns.publish(
-    TopicArn = arn, 
-    Message=json.dumps({'default': json.dumps(payload)}),
-    MessageStructure='json'
-  )  
+
+# pre-handler global
+rootId = getMasterId('/org-assemble/orgIds', False)
+[securityId, workloadsId] = getOuIds('/org-assemble/orgIds', False)
+
 
 def lambda_handler(event, context):
-  queueUrl = os.environ['NextQueue']
-  secondUrl = os.environ['SecondQueue']
-  lambdaName = os.environ['LambdaName']
-  topicArn = os.environ['SlackArn']
-
-  try:
-    if(event['origin'] == 'createOu'):
-      checkOu(queueUrl, topicArn)
-    elif(event['origin'] == 'moveAccount'):
-      checkAccount(secondUrl,topicArn)
-    elif(event['origin'] == 'stackset'):
-      runStackset(secondUrl)
     
-  except:
-    slackPublish(topicArn, "failed", lambdaName, None)
-  
+  if event['eventName'] == "CreateOrganizationalUnit":
+    checkOu()
+  # elif event['eventName'] == "MoveAccount":
+  #   checkAccount(secondUrl,topicArn)

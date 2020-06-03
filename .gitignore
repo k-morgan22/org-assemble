@@ -2,3 +2,12 @@
 ######################
 .DS_Store
 .DS_Store?
+
+# SAM generated config file #
+######################
+samconfig.toml
+
+
+# test events folder #
+######################
+events/

@@ -7,7 +7,7 @@ secret = boto3.client('secretsmanager')
 
 def getUrl():
   urlResponse = secret.get_secret_value(
-    SecretId = '/account-assemble/slack/slackUrl'
+    SecretId = '/org-assemble/slack/slackUrl'
   )
   url = urlResponse['SecretString']
   return url

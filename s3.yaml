@@ -43,7 +43,6 @@ Resources:
 
   accountTrail:
     DependsOn:
-      - cloudtrailBucket
       - cloudtrailBucketPolicy
     Type: "AWS::CloudTrail::Trail"
     Properties:

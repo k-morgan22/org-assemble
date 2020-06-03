@@ -1,100 +1,124 @@
-import json
+from crhelper import CfnResource
 import boto3
-from botocore.vendored import requests
-from uuid import uuid4
+import json
 import os
 
-
-lambdaClient = boto3.client('lambda')
-sqs = boto3.client('sqs')
-sns = boto3.client('sns')
-
-
-
-def sendResponse(event, context, responseStatus, responseData = None):
-  responseUrl = event['ResponseURL']
-  print(responseUrl)
-
-  responseBody = {}
-  responseBody['Status'] = responseStatus
-  responseBody['Reason'] = 'See print statements in console'
-  responseBody['PhysicalResourceId'] = event['ResourceProperties']['ServiceToken']
-  responseBody['StackId'] = event['StackId']
-  responseBody['RequestId'] = event['RequestId']
-  responseBody['LogicalResourceId'] = event['LogicalResourceId']
-  responseBody['Data'] = responseData
-
-  json_responseBody = json.dumps(responseBody)
-  print("Response body:\n" + json_responseBody)
-
-  try:
-    response = requests.put(responseUrl,
-                            data=json_responseBody)
-    print("Status code: " + response.status)
-      
-  except:
-    print("send response to cloudformation failed")
+helper = CfnResource()
+ebridge = boto3.client('events')
+trail = boto3.client('cloudtrail')
+s3 = boto3.client('s3')
+org = boto3.client('organizations')
 
 
-def deleteResponse(event, context):
-  try:
-    delete = lambdaClient.delete_function(
-        FunctionName = event['ResourceProperties']['ServiceToken']
+@helper.create
+def create(event, context):
+  accountId = os.environ['accountId']
+    
+  trailExists, trailName  = checkTrail()
+  if trailExists:
+    checkLogging(trailName)
+  else:
+    createTrail(accountId)
+
+  putEvent()
+
+@helper.update
+@helper.delete
+def no_op(_, __):
+    pass
+
+
+def checkTrail():
+  exists = False
+  response = trail.list_trails()
+  if response['Trails']: 
+    exists = True
+    name = response['Trails'][0]['Name']
+  else: 
+    name = None
+
+  return exists, name
+
+def checkLogging(name):
+  response = trail.get_trail_status(
+    Name = name
+  )
+  
+  logging = response['IsLogging']
+  if logging:
+    return
+  else:
+    trail.start_logging(
+      Name = name
     )
-    print("deleting lambda...")
-    sendResponse(event, context, "SUCCESS", {})
-  except:
-    sendResponse(event, context, "FAILED", {})
+  
+def createTrail(accountId):  
+  bucketName = f"cloudtrail-logs-{accountId}"
+  
+  createBucket = s3.create_bucket(
+    Bucket = bucketName
+  )
+  
+  policy = {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Sid": "AWSCloudTrailAclCheck",
+        "Effect": "Allow",
+        "Principal": {"Service": "cloudtrail.amazonaws.com"},
+        "Action": "s3:GetBucketAcl",
+        "Resource": f"arn:aws:s3:::{bucketName}"
+      },
+      {
+        "Sid": "AWSCloudTrailWrite",
+        "Effect": "Allow",
+        "Principal": {"Service": "cloudtrail.amazonaws.com"},
+        "Action": "s3:PutObject",
+        "Resource": f"arn:aws:s3:::{bucketName}/AWSLogs/*/*",
+        "Condition": {"StringEquals": {"s3:x-amz-acl": "bucket-owner-full-control"}}
+      }
+    ]
+  }
+  
+  putPolicy = s3.put_bucket_policy(
+    Bucket = bucketName,
+    Policy = json.dumps(policy)
+  )
+  
+  trailAccess = org.enable_aws_service_access(
+    ServicePrincipal='cloudtrail.amazonaws.com'
+  )
 
-def sendMessage(url, messageBody):
-  response = sqs.send_message(
-    QueueUrl = url,
-    MessageBody = messageBody,
-    MessageDeduplicationId= uuid4().hex,
-    MessageGroupId='1'
+  create = trail.create_trail(
+    Name = "organization-trail-DO-NOT-DELETE",
+    S3BucketName = bucketName,
+    IncludeGlobalServiceEvents = True,
+    IsMultiRegionTrail = True,
+    EnableLogFileValidation = True,
+    IsOrganizationTrail = True
+  )
+  
+  logging = trail.start_logging(
+    Name = "organization-trail-DO-NOT-DELETE"
   )
 
 
-def slackPublish(arn, status, function, text):
-  payload = {
-    "condition": status,
-    "function": function,
-    "text": text
+def putEvent():
+  metadata = {
+    "metadata": {
+      "service": "assembler-producer",
+      "status": "SUCCEEDED"
+    }
   }
-  response = sns.publish(
-    TopicArn = arn, 
-    Message=json.dumps({'default': json.dumps(payload)}),
-    MessageStructure='json'
-  ) 
+  response = ebridge.put_events(
+    Entries = [
+      {
+        'Source': 'assembler-producer',
+        'DetailType': 'org-assemble event',
+        'Detail': json.dumps(metadata) 
+      }
+    ]
+  )
 
-
-def lambda_handler(event, context):
-  lambdaArn = event['ResourceProperties']['ServiceToken']
-  queueUrl = os.environ['NextQueue']
-  topicArn = os.environ['SlackArn']
-  
-  
-  if(event['RequestType'] == 'Create'):
-    try:
-
-      sendMessage(queueUrl, "create organizational units!")
-    
-
-      sendResponse(event, context, "SUCCESS", {})
-    except:
-      slackPublish(topicArn, "failed", "producer", None)
-      sendResponse(event, context, "FAILED", {})
-          
-          
-  if(event['RequestType'] == 'Update'):
-    try:
-      sendResponse(event, context, "SUCCESS", {})
-    except:
-      slackPublish(topicArn, "failed", "producer", None)
-      sendResponse(event, context, "FAILED", {})      
-  elif(event['RequestType'] == 'Delete'):
-    try:
-      deleteResponse(event, context)
-    except:
-      slackPublish(topicArn, "failed", "producer", None)
-      sendResponse(event, context, "FAILED", {})
+def handler(event, context):
+    helper(event, context)

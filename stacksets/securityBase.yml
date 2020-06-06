@@ -1,12 +1,64 @@
-AWSTemplateFormatVersion: 2010-09-09
-Description: Template to create an centralized logging bucket, 
-  
-# Parameters:
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: Baseline for new log accounts - cloudtrail bucket and policy, server access logs bucket
   
 Resources:
+  stacksetBucketsFunction:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Code: 
+        S3Bucket: testing-org-lambda
+        S3Key: stacksetBuckets.zip
+      Description: empty buckets on cloudformation delete
+      FunctionName: stacksetBuckets
+      Handler: stacksetBuckets.handler
+      Layers:
+        - arn:aws:lambda:us-east-1:113088814899:layer:Klayers-python37-crhelper:4
+      Runtime: python3.7
+      Timeout: 30
+      MemorySize: 512
+      Role: !GetAtt stacksetBucketsRole.Arn
+  
+  stacksetBucketsRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument: 
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowAssumeRole
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Description: Allow lambda to empty buckets 
+      RoleName: stacksetBucketsRole
+
+  stacksetBucketsRolePolicy:
+    Type: "AWS::IAM::Policy"
+    Properties:
+      PolicyDocument: 
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Resource: '*'
+            Action:
+              - s3:* 
+      PolicyName: stacksetBucketsRolePolicy
+      Roles:
+        - !Ref stacksetBucketsRole
+    
+  triggerStacksetBuckets:
+    DependsOn: 
+      - stacksetBucketsRolePolicy
+      - stacksetBucketsRole
+    Type: "Custom::triggerStacksetBuckets"
+    Properties:
+      ServiceToken: !GetAtt stacksetBucketsFunction.Arn
+      accountId: !Ref "AWS::AccountId"
+      storageBucket: !Ref cloudtrailBucket
+      logBucket: !Ref s3AccessBucket
+  
   s3AccessBucket:
-    DeletionPolicy: Retain 
-    UpdateReplacePolicy: Retain
     Type: "AWS::S3::Bucket"
     Properties:
       AccessControl: LogDeliveryWrite
@@ -14,7 +66,7 @@ Resources:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
-      BucketName: !Sub ${AWS::AccountId}-s3-access-logs-do-not-delete
+      BucketName: !Sub s3-access-logs-${AWS::AccountId} 
       PublicAccessBlockConfiguration:
         BlockPublicAcls: True
         BlockPublicPolicy: True
@@ -22,15 +74,13 @@ Resources:
         RestrictPublicBuckets: True
 
   cloudtrailBucket:
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
     Type: "AWS::S3::Bucket"
     Properties:
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
-      BucketName: !Sub ${AWS::AccountId}-cloudtrail-logs-do-not-delete
+      BucketName: !Sub cloudtrail-logs-${AWS::AccountId}
       LoggingConfiguration:
         DestinationBucketName: !Ref s3AccessBucket
       PublicAccessBlockConfiguration:
@@ -61,9 +111,3 @@ Resources:
             Condition:
               StringEquals:
                 s3:x-amz-acl: 'bucket-owner-full-control'
-  
-Outputs:
-  LoggingBucketName: 
-    Description: Centralized logging bucket
-    Value: !Ref cloudtrailBucket
-

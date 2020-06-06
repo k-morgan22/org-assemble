@@ -1,17 +1,15 @@
 import json
 import boto3
 from uuid import uuid4
-import os
 import time
+import logging
 
-lambdaClient = boto3.client('lambda')
-sqs = boto3.client('sqs')
 ssm = boto3.client('ssm')
-sns = boto3.client('sns')
 cf = boto3.client('cloudformation')
+ebridge = boto3.client('events')
 
-
-# business logic
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 def getOuIds(path, decryption):
   response = ssm.get_parameters_by_path(
@@ -28,163 +26,112 @@ def getOuIds(path, decryption):
   return security, workloads
 
 
-def createBaseStack():
+def createBaseStack(name, url ):
+  try:
+    baselineStackName = name + str(uuid4())  
   
-  baselineStackName = "account-baseline-" + str(uuid4())  
-  
-  baselineStackResponse = cf.create_stack_set(
-    StackSetName = baselineStackName,
-    Description = 'Baseline for new accounts',
-    TemplateURL='https://testing-org-lambda.s3.amazonaws.com/accountBase.yml',
-    Capabilities= [
-      'CAPABILITY_NAMED_IAM'
-    ],
-    PermissionModel='SERVICE_MANAGED',
-    AutoDeployment={
-      'Enabled': True,
-      'RetainStacksOnAccountRemoval': False
-    }
-  )
-  
-  return baselineStackName
-  
-def createLogStack():  
-
-  loggingStackName = "logging-baseline-" + str(uuid4())  
-  
-  loggingStackResponse = cf.create_stack_set(
-    StackSetName = loggingStackName,
-    Description = 'Baseline for centralized logging',
-    TemplateURL='https://testing-org-lambda.s3.amazonaws.com/securityBase.yml',
-    PermissionModel='SERVICE_MANAGED',
-    AutoDeployment={
-      'Enabled': True,
-      'RetainStacksOnAccountRemoval': False
-    }
-  )
-  
-  return loggingStackName
-
-  
-def deployLoggingStack(stackName, ou):
-  deployLogResponse = cf.create_stack_instances(
-    StackSetName=stackName,
-    DeploymentTargets={
-      'OrganizationalUnitIds': [
-        ou
-      ]
-    },
-    Regions=[
-      'us-east-1'
-    ],
-    OperationPreferences={
-      'FailureTolerancePercentage': 100,
-      'MaxConcurrentPercentage': 100
-    }
-  )
-  
-  loggingOpId = deployLogResponse['OperationId']
-  
-  while True:
-    deployLogStatus = cf.describe_stack_set_operation(
-      StackSetName=stackName,
-      OperationId=loggingOpId
+    baselineStackResponse = cf.create_stack_set(
+      StackSetName = baselineStackName,
+      Description = 'Baseline for new accounts',
+      TemplateURL= url,
+      Capabilities= [
+        'CAPABILITY_NAMED_IAM'
+      ],
+      PermissionModel='SERVICE_MANAGED',
+      AutoDeployment={
+        'Enabled': True,
+        'RetainStacksOnAccountRemoval': False
+      }
     )
-
-    if deployLogStatus['StackSetOperation']['Status'] == 'RUNNING':
-      time.sleep(2)
-    elif deployLogStatus['StackSetOperation']['Status'] == 'SUCCEEDED':  
-      break
     
+    return baselineStackName
+  except Exception as e:
+    logger.error(e)
+    raise
+  
 
 
 def deployBaselineStack(stackName, ou):
-  deployBaseResponse = cf.create_stack_instances(
-    StackSetName=stackName,
-    DeploymentTargets={
-      'OrganizationalUnitIds': [
-        ou
-      ]
-    },
-    Regions=[
-      'us-east-1'
-    ],
-    OperationPreferences={
-      'FailureTolerancePercentage': 100,
-      'MaxConcurrentPercentage': 100
-    }
-  )
-  
-  baselineOpId = deployBaseResponse['OperationId']
-  
-  while True:
-    deployBaseStatus = cf.describe_stack_set_operation(
+  try:
+    deployBaseResponse = cf.create_stack_instances(
       StackSetName=stackName,
-      OperationId=baselineOpId
+      DeploymentTargets={
+        'OrganizationalUnitIds': [
+          ou
+        ]
+      },
+      Regions=[
+        'us-east-1'
+      ],
+      OperationPreferences={
+        'FailureTolerancePercentage': 0,
+        'MaxConcurrentPercentage': 100
+      }
     )
-    if deployBaseStatus['StackSetOperation']['Status'] == 'RUNNING':
-      time.sleep(2)
-    elif deployBaseStatus['StackSetOperation']['Status'] == 'SUCCEEDED':
-      break
+    
+    baselineOpId = deployBaseResponse['OperationId']
+    
+    while True:
+      deployBaseStatus = cf.describe_stack_set_operation(
+        StackSetName=stackName,
+        OperationId=baselineOpId
+      )
+      if deployBaseStatus['StackSetOperation']['Status'] == 'RUNNING':
+        time.sleep(10)
+      elif deployBaseStatus['StackSetOperation']['Status'] == 'SUCCEEDED':
+        break
+  except Exception as e:
+    logger.error(e)
+    raise
+  
 
-
-# communication logic
-
-def invoke():
-  payload = {
-    "origin": "stackset"
-  }
-
-  response = lambdaClient.invoke(
-    FunctionName = 'logic',
-    InvocationType = 'Event',
-    LogType = 'None',
-    Payload = json.dumps(payload)
+def putEvent(destination):
+  
+  if(destination == "stackset"):
+    details = {
+      "metadata": {
+        "service": "assembler-stackset",
+        "operation": "stackset-logBase",
+        "status": "SUCCEEDED"
+      },
+      "data": {
+        "baseStackName": "account stackset"
+      }
+    }
+  else:
+    details = {
+      "metadata": {
+        "service": "assembler-stackset",
+        "operation": "stackset-accountBase",
+        "status": "SUCCEEDED"
+      },
+      "data": {
+        "randomData": "placeholder"
+      }
+    }
+  response = ebridge.put_events(
+    Entries = [
+      {
+        'Source': 'assembler-stackset',
+        'DetailType': 'org-assemble event',
+        'Detail': json.dumps(details) 
+      }
+    ]
   )
 
-def sendMessage(url, messageBody):
-  response = sqs.send_message(
-    QueueUrl = url,
-    MessageBody = messageBody,
-    MessageDeduplicationId= uuid4().hex,
-    MessageGroupId='1'
-  )
 
-
-def slackPublish(arn, status, function, text):
-  payload = {
-    "condition": status,
-    "function": function,
-    "text": text
-  }
-  response = sns.publish(
-    TopicArn = arn, 
-    Message=json.dumps({'default': json.dumps(payload)}),
-    MessageStructure='json'
-  ) 
-
+#pre-handler global var
+securityId, workloadsId = getOuIds('/org-assemble/orgIds', False)	
 
 def lambda_handler(event, context):
-  lambdaName = os.environ['LambdaName']
-  queueUrl = os.environ['NextQueue']
-  topicArn = os.environ['SlackArn']
-  stack = event['Records'][0]['body']
+  if event['baseStackName'] == "log stackset":
+    loggingStackName = createBaseStack("logging-baseline-", 'https://testing-org-lambda.s3.amazonaws.com/securityBase.yml')
+    deployBaselineStack(loggingStackName, securityId)
 
+    putEvent("stackset")
 
-  try:
-    if(stack == 'log stack'):
-      securityId, workloadsId = getOuIds('/org-assemble/orgIds', False)
-      loggingStackName = createLogStack()
-      deployLoggingStack(loggingStackName, securityId)
-      
-      invoke()
-      slackPublish(topicArn, "success", None, "Security baseline deployed")
-    elif(stack == 'base stack'):
-      securityId, workloadsId = getOuIds('/org-assemble/orgIds', False)
-      envStackName = createBaseStack()
-      deployBaselineStack(envStackName, workloadsId)
-  
-      sendMessage(queueUrl, "stacksets deployed")
-      slackPublish(topicArn, "success", None, "Env Account baselines deployed")
-  except:
-    slackPublish(topicArn, "failed", lambdaName, None)
+  elif event['baseStackName'] == "account stackset":
+    envStackName = createBaseStack("account-baseline-", 'https://testing-org-lambda.s3.amazonaws.com/accountAssembleBase.yml')
+    deployBaselineStack(envStackName, workloadsId)
+
+    putEvent("enableLogging")

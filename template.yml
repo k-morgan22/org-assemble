@@ -305,7 +305,7 @@ Resources:
             Type: SNS 
             Destination: !Ref onFailureTopic
       Events: 
-        trigger:
+        Trigger:
           Type: EventBridgeRule
           Properties:
             InputPath: $.detail.metadata
@@ -341,7 +341,7 @@ Resources:
             Type: SNS 
             Destination: !Ref onFailureTopic
       Events: 
-        ouTrigger:
+        OuTrigger:
           Type: EventBridgeRule
           Properties:
             InputPath: $.detail
@@ -362,9 +362,10 @@ Resources:
                   organizationalUnit:
                     name:
                       - "Security"
-        moveTrigger:
+        MoveTrigger:
           Type: EventBridgeRule
           Properties:
+            InputPath:  $.detail
             Pattern:
               source: 
                 - aws.organizations
@@ -401,7 +402,7 @@ Resources:
             Type: SNS 
             Destination: !Ref onFailureTopic
       Events: 
-        trigger:
+        Trigger:
           Type: EventBridgeRule
           Properties:
             InputPath: $.detail.data
@@ -438,7 +439,7 @@ Resources:
             Type: SNS 
             Destination: !Ref onFailureTopic
       Events: 
-        trigger:
+        Trigger:
           Type: EventBridgeRule
           Properties:
             InputPath: $.detail.serviceEventDetails.createAccountStatus
@@ -478,23 +479,37 @@ Resources:
           OnFailure:
             Type: SNS 
             Destination: !Ref onFailureTopic
-      # Events: 
-      #   trigger:
-      #     Type: EventBridgeRule
-      #     Properties:
-      #       Pattern:
-      #         source: 
-      #           - aws.organizations
-      #         detail: 
-      #           userIdentity:
-      #             sessionContext:
-      #               sessionIssuer:
-      #                 arn: 
-      #                   - !GetAtt organizationRole.Arn 
-      #           eventName: 
-      #             - "MoveAccount"
-      #           eventSource:
-      #             - "organizations.amazonaws.com"
+      Events: 
+        LogicTrigger:
+          Type: EventBridgeRule
+          Properties:
+            InputPath: $.detail.data
+            Pattern:
+              source: 
+                - assembler-logic
+              detail-type:
+                - org-assemble event
+              detail:
+                metadata:
+                  operation:
+                    - "checkAccount"
+                  status:
+                    - "SUCCEEDED"
+        SelfTrigger:
+          Type: EventBridgeRule
+          Properties:
+            InputPath: $.detail.data
+            Pattern:
+              source: 
+                - assembler-stackset
+              detail-type:
+                - org-assemble event
+              detail:
+                metadata:
+                  operation:
+                    - "stackset-logBase"
+                  status:
+                    - "SUCCEEDED"
                 
 
 
@@ -518,28 +533,31 @@ Resources:
           OnFailure:
             Type: SNS 
             Destination: !Ref onFailureTopic
-      Events: 
-        trigger:
-          Type: EventBridgeRule
-          Properties:
-            InputPath: $.detail.metadata
-            Pattern:
-              source: 
-                - assembler-stackset
-              detail-type: 
-                - org-assemble event
-              detail: 
-                metadata:
-                  status: 
-                    - "SUCCEEDED"
+      # Events: 
+      #   Trigger:
+      #     Type: EventBridgeRule
+      #     Properties:
+      #       InputPath: $.detail.metadata
+      #       Pattern:
+      #         source: 
+      #           - assembler-stackset
+      #         detail-type: 
+      #           - org-assemble event
+      #         detail: 
+      #           metadata:
+      #             status: 
+      #               - "SUCCEEDED"
 
   TriggerProducer:
     DependsOn: 
-      - createOuFunctiontriggerPermission
-      - createAccountFunctiontriggerPermission
-      - moveAccountFunctiontriggerPermission
-      # - stacksetFunctiontriggerPermission
-      - enableLoggingFunctiontriggerPermission
+      - createOuFunctionTriggerPermission
+      - createAccountFunctionTriggerPermission
+      - moveAccountFunctionTriggerPermission
+      - logicFunctionMoveTriggerPermission
+      - logicFunctionOuTriggerPermission
+      - stacksetFunctionLogicTriggerPermission
+      - stacksetFunctionSelfTriggerPermission
+      # - enableLoggingFunctionTriggerPermission
     Type: "Custom::TriggerProducer"
     Properties:
       ServiceToken: !GetAtt producerFunction.Arn

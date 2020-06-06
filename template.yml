@@ -365,7 +365,7 @@ Resources:
         MoveTrigger:
           Type: EventBridgeRule
           Properties:
-            InputPath:  $.detail
+            InputPath: $.detail
             Pattern:
               source: 
                 - aws.organizations
@@ -533,20 +533,22 @@ Resources:
           OnFailure:
             Type: SNS 
             Destination: !Ref onFailureTopic
-      # Events: 
-      #   Trigger:
-      #     Type: EventBridgeRule
-      #     Properties:
-      #       InputPath: $.detail.metadata
-      #       Pattern:
-      #         source: 
-      #           - assembler-stackset
-      #         detail-type: 
-      #           - org-assemble event
-      #         detail: 
-      #           metadata:
-      #             status: 
-      #               - "SUCCEEDED"
+      Events: 
+        Trigger:
+          Type: EventBridgeRule
+          Properties:
+            InputPath: $.detail.data
+            Pattern:
+              source: 
+                - assembler-stackset
+              detail-type:
+                - org-assemble event
+              detail:
+                metadata:
+                  operation:
+                    - "stackset-accountBase"
+                  status:
+                    - "SUCCEEDED"
 
   TriggerProducer:
     DependsOn: 
@@ -557,7 +559,7 @@ Resources:
       - logicFunctionOuTriggerPermission
       - stacksetFunctionLogicTriggerPermission
       - stacksetFunctionSelfTriggerPermission
-      # - enableLoggingFunctionTriggerPermission
+      - enableLoggingFunctionTriggerPermission
     Type: "Custom::TriggerProducer"
     Properties:
       ServiceToken: !GetAtt producerFunction.Arn

@@ -1,53 +1,48 @@
 import json
 import boto3
-import os
 
-lambdaClient = boto3.client('lambda')
-ssm = boto3.client('ssm')
-sns = boto3.client('sns')
-sts = boto3.client('sts')
 org = boto3.client('organizations')
 trail = boto3.client('cloudtrail')
 
-# business logic
-
-def getAccountIds(path, decryption):
-  response = ssm.get_parameters_by_path(
-    Path = path,
-    Recursive = True,
-    WithDecryption = decryption
-  )
-  
+def getAccountIds():
   envList = []
-  
-  for param in response['Parameters']:
-    if 'logging' in param['Name']:
-      logging = param['Value']
-    else:
-      envList.append(param['Value'])
+  response = org.list_accounts()
+  for account in response['Accounts']:
+    if account['Name'] == "Logging":
+      logging = account['Id']
+    elif account['Name'] in ["Dev", "Staging", "Prod"]:
+      envList.append(account['Id'])
   
   return envList, logging
-  
-def createTrail(trailName, bucketName):
-  trailAccess = org.enable_aws_service_access(
-    ServicePrincipal='cloudtrail.amazonaws.com'
-  )
 
-  create = trail.create_trail(
+def isOrg():
+  orgEnabled = False
+  response = trail.describe_trails(
+    includeShadowTrails = False
+  )
+  cloudtrail = response['trailList'][0]
+  if cloudtrail['IsOrganizationTrail'] == True:
+    orgEnabled = True
+  trailName = cloudtrail['Name']
+  
+  return orgEnabled, trailName
+
+def updateTrail(trailName, newBucket):
+  response = trail.update_trail(
     Name = trailName,
-    S3BucketName = bucketName,
-    IncludeGlobalServiceEvents = True,
-    IsMultiRegionTrail = True,
-    EnableLogFileValidation = True,
+    S3BucketName = newBucket,
     IsOrganizationTrail = True
   )
 
-  startLogging = trail.start_logging(
-    Name = trailName
+def updateBucket(trailName, newBucket):
+  response = trail.update_trail(
+    Name = trailName,
+    S3BucketName = newBucket
   )
 
-def addEvents(trailName, buckets):
-  addEvents = trail.put_event_selectors(
+
+def addEvent(trailName, buckets):
+  response = trail.put_event_selectors(
     TrailName = trailName,
     EventSelectors = [
       {
@@ -60,39 +55,17 @@ def addEvents(trailName, buckets):
       }
     ]
   )
-  
-  
- 
- # communication logic
- 
-def slackPublish(arn, status, function, text):
-  payload = {
-    "condition": status,
-    "function": function,
-    "text": text
-  }
-  response = sns.publish(
-    TopicArn = arn, 
-    Message=json.dumps({'default': json.dumps(payload)}),
-    MessageStructure='json'
-  ) 
-
 
 def lambda_handler(event, context):
-  lambdaName = os.environ['LambdaName']
-  topicArn = os.environ['SlackArn']
+  envAccounts, logAccount = getAccountIds()
+  logBucket = f"cloudtrail-logs-{logAccount}" 
+  envBuckets =[f"arn:aws:s3:::bucket-{account}/" for account in envAccounts]
 
+  orgEnabled, trailName = isOrg()
 
-  try:
-    envAccounts, logAccount = getAccountIds('/org-assemble/accountIds', False)
-    trailName = "organization-trail-DO-NOT-DELETE"
-    logBucket = f'{logAccount}-cloudtrail-logs-do-not-delete'
-    accountBuckets = [f'arn:aws:s3:::{account}-storage-bucket/' for account in envAccounts]
-    
-    createTrail(trailName, logBucket)
-    addEvents(trailName, accountBuckets)
+  if(orgEnabled != True):
+    updateTrail(trailName, logBucket)
+  else: 
+    updateBucket(trailName, logBucket)
 
-    
-    slackPublish(topicArn, "success", None, "Organization Trail started logging")
-  except:
-    slackPublish(topicArn, "failed", lambdaName, None)
+  addEvent(trailName, envBuckets)

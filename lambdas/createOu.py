@@ -21,39 +21,27 @@ def createOrgUnit(rootId, ouName):
   )
   
   return ouResponse['OrganizationalUnit']['Id']
+  
+  
+def putParameter(prefix, description, idValue):
+  paramName = prefix + str(uuid4())
+  
+  ssm.put_parameter(
+    Name = paramName,
+    Description = description,
+    Value = idValue,
+    Type = 'String'
+  )
 
 # pre-handler global
 masterId = grabMasterId()
 
 def lambda_handler(event, context):
 
-  masterName = '/org-assemble/orgIds/master-'+ str(uuid4())
-  
-  putParameter = ssm.put_parameter(
-    Name = masterName,
-    Description = 'Master Org Id',
-    Value = masterId,
-    Type = 'String'
-  )
+  putParameter('/org-assemble/orgIds/master-', 'Master Org Id', masterId )
 
   workloadsId = createOrgUnit(masterId, "Workloads")
+  putParameter('/org-assemble/orgIds/workloads-', 'Workloads Ou Id', workloadsId)
   
-  workloadsName = '/org-assemble/orgIds/workloads-'+ str(uuid4())
-  
-  putParameter = ssm.put_parameter(
-    Name = workloadsName,
-    Description = 'Workloads Ou Id',
-    Value = workloadsId,
-    Type = 'String'
-  )
-
   securityId = createOrgUnit(masterId, "Security")
-
-  securityName = '/org-assemble/orgIds/security-'+ str(uuid4())
-  
-  putParameter = ssm.put_parameter(
-    Name = securityName,
-    Description = 'Security Ou Id',
-    Value = securityId,
-    Type = 'String'
-  )
+  putParameter('/org-assemble/orgIds/security-', 'Security Ou Id', securityId )

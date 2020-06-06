@@ -44,7 +44,7 @@ def moveAccount(newAccountId, rootId, destinationId):
   )
 
 # pre-handler global
-[masterId, securityId, workloadsId] = getOrgIds('/org-assemble/orgIds', False)
+masterId, securityId, workloadsId = getOrgIds('/org-assemble/orgIds', False)
 
 def lambda_handler(event, context):
   accountId = event['accountId']

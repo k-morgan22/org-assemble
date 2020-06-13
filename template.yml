@@ -331,6 +331,7 @@ Resources:
       CodeUri: lambdas/logic.py
       Handler: logic.lambda_handler
       Role: !GetAtt organizationRole.Arn
+      ReservedConcurrentExecutions: 1
       EventInvokeConfig: 
         MaximumRetryAttempts: 2
         DestinationConfig:

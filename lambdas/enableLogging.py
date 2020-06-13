@@ -61,6 +61,10 @@ def lambda_handler(event, context):
   logBucket = f"cloudtrail-logs-{logAccount}" 
   envBuckets =[f"arn:aws:s3:::bucket-{account}/" for account in envAccounts]
 
+  trailAccess = org.enable_aws_service_access(
+    ServicePrincipal='cloudtrail.amazonaws.com'
+  )
+
   orgEnabled, trailName = isOrg()
 
   if(orgEnabled != True):

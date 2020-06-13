@@ -9,6 +9,8 @@ ebridge = boto3.client('events')
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+triggerStacksets = True
+
 
 def getMasterId(path, decryption):
   response = ssm.get_parameters_by_path(
@@ -58,6 +60,7 @@ def checkOu():
 
 
 def checkAccount():
+  global triggerStacksets
 
   isSecurityCreated = False
   isWorkloadsCreated = False
@@ -84,8 +87,9 @@ def checkAccount():
   if 'Dev' in workList and 'Prod' in workList and 'Staging' in workList:
     isWorkloadsCreated = True
 
-  if(isSecurityCreated and isWorkloadsCreated):
+  if(isSecurityCreated and isWorkloadsCreated and triggerStacksets):
     putEvent("stackset")
+    triggerStacksets = False
   
 
 def putEvent(destination):

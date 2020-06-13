@@ -332,15 +332,6 @@ Resources:
       Handler: logic.lambda_handler
       Role: !GetAtt organizationRole.Arn
       ReservedConcurrentExecutions: 1
-      EventInvokeConfig: 
-        MaximumRetryAttempts: 2
-        DestinationConfig:
-          OnSuccess:
-            Type: SNS 
-            Destination: !Ref onSuccessTopic
-          OnFailure:
-            Type: SNS 
-            Destination: !Ref onFailureTopic
       Events: 
         OuTrigger:
           Type: EventBridgeRule
@@ -393,15 +384,6 @@ Resources:
       CodeUri: lambdas/createAccount.py
       Handler: createAccount.lambda_handler
       Role: !GetAtt organizationRole.Arn
-      EventInvokeConfig: 
-        MaximumRetryAttempts: 2
-        DestinationConfig:
-          OnSuccess:
-            Type: SNS 
-            Destination: !Ref onSuccessTopic
-          OnFailure:
-            Type: SNS 
-            Destination: !Ref onFailureTopic
       Events: 
         Trigger:
           Type: EventBridgeRule

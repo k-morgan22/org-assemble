@@ -16,17 +16,13 @@ slackUrl = getUrl()
 
 def formatSuccess(function):
   if function == "createOu":
-    messageBody = "Workloads OU created"
-  elif function == "createAccount":
-    messageBody = "Account created"
-  elif function == "logic":
-    messageBody = "Your logic is correct!"
+    messageBody = "Security & Workloads organizational units created"
   elif function == "moveAccount":
-    messageBody = "Account moved to Workloads OU"
+    messageBody = "1 account created & moved to the correct organizational unit"
   elif function == "stackset":
-    messageBody = "Base account stackset deployed"
+    messageBody = "Account(s) baselined with template in one organizational unit"
   elif function == "enableLogging":
-    messageBody = "Data event logging enabled for account"
+    messageBody = "Data events added & trail updated"
       
   format = {
     "blocks": [

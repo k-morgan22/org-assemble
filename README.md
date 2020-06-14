@@ -1,4 +1,4 @@
-# Org Assemble
+# Org Assemble (Eventbridge Version)
 
 It automates the AWS Organization creation process, creating 2 organizational units and 4 accounts. The first unit, Security, contains the Logging account that stores logs for the organization 
 trail, and server access logs for all buckets in the other 3  accounts. The second unit, Workloads, contains a Dev, Staging, and Prod account for each stage in the software development life cycle. Each account in the Workloads 
@@ -57,6 +57,7 @@ unit contains a storage bucket and a limited role with access to said bucket.
   
 7. Leave this page open as you will need your webhook for step 6
 
+
 #### In your AWS Account, create an organization 
 
 1. In the AWS Mangement Console, select Organizations under 
@@ -75,44 +76,21 @@ unit contains a storage bucket and a limited role with access to said bucket.
 3. There should be a banner on the top of the screen that says, "Enable trusted access with AWS Organizations to use service managed permissions". If not, reload the page.
   
 4. Click on **Enable trusted access**
+
+
+#### Create a trail in your AWS account
+
+
+#### Create a user with programmatic access in your AWS account
   
 
-#### Run the initial.yml template
+#### Download the repo code
 
-1. If you already have the template on your local system, skip this step
-  
-	a. If not, navigate to [Github](https://github.com/k-morgan22/s3-serverless/blob/master/initial.yml) and download the yml file 
+1. Navigate to [Github](https://github.com/k-morgan22/s3-serverless/blob/master) and download the repo
+
     
-2. In the Cloudformation console, click on the left hand menu and select **stacks**
-  
-3. Click on **Create stack**
-  
-4. Choose **Template is ready** 
-  
-5. Choose **Upload a template file**
-  
-6. Select **Choose file** and navigate to your local copy of initial.yml
-  
-7. Select **Next**
-  
-8. On the Parameters page, give the stack a name 
-  
-9. Enter the 4 unique email address for your log, dev, staging, and prod accounts
-  
-10. Go back to the slack app page and copy the webhook url you created in step 3
-  
-11. Paste that url in the **Slack Webhook Url** parameter
-  
-12. Click **Next**
-  
-13. On the Configure stack options page, leave everything as default and click **Next** on the bottom of the page
-  
-14. On the Review page, double check you enter your email addresses correctly and scroll down to the bottom
-  
-15. Click the check box next to "I acknowledge that AWS Cloudformation might create IAM resources with custom names."
-  
-16. Click **Create stack**
-  
+#### SAM deploy from the command line
+
 
 The stack will run, creating all the necesary resources in your account for this app. 
 Once the stack has successfully completed, you will start receiving notification in the slack channel you created, giving you updates on the organization creation process.

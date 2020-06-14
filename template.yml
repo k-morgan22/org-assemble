@@ -1,0 +1,548 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+
+Description: template to create 2 organizational units and 4 accounts in an organization
+
+Globals:
+  Function:
+    Runtime: python3.7
+    MemorySize: 512
+    Timeout: 30
+  
+Parameters:
+
+  LoggingAccountEmail:
+    Description: Email address used to create a centralized logging account
+    Type: String
+    MinLength: 6
+    MaxLength: 64 
+    AllowedPattern: ^[_A-Za-z0-9-\+\.]+(\.[_A-Za-z0-9-]+)*@[A-Za-z0-9-]+(\.[A-Za-z0-9]+)*(\.[A-Za-z]{2,})$
+    ConstraintDescription: Account Email can contain only ASCII characters. This must be in the format of something@email.com
+
+  DevAccountEmail:
+    Description: Email address used create a dev environment account 
+    Type: String
+    MinLength: 6
+    MaxLength: 64
+    AllowedPattern: ^[_A-Za-z0-9-\+\.]+(\.[_A-Za-z0-9-]+)*@[A-Za-z0-9-]+(\.[A-Za-z0-9]+)*(\.[A-Za-z]{2,})$
+    ConstraintDescription: Account Email can contain only ASCII characters. This must be in the format of something@email.com
+
+  StagingAccountEmail:
+    Description: Email address used create a staging environment account 
+    Type: String
+    MinLength: 6
+    MaxLength: 64
+    AllowedPattern: ^[_A-Za-z0-9-\+\.]+(\.[_A-Za-z0-9-]+)*@[A-Za-z0-9-]+(\.[A-Za-z0-9]+)*(\.[A-Za-z]{2,})$
+    ConstraintDescription: Account Email can contain only ASCII characters. This must be in the format of something@email.com
+
+  ProdAccountEmail:
+    Description: Email address used create a prod environment account
+    Type: String
+    MinLength: 6
+    MaxLength: 64
+    AllowedPattern: ^[_A-Za-z0-9-\+\.]+(\.[_A-Za-z0-9-]+)*@[A-Za-z0-9-]+(\.[A-Za-z0-9]+)*(\.[A-Za-z]{2,})$
+    ConstraintDescription: Account Email can contain only ASCII characters. This must be in the format of something@email.com
+
+  SlackWebHookUrl:
+    Description: Incoming WebHooks Integration for slack channel messaging 
+    Type: String
+    NoEcho: true    
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+    - Label: 
+        default: Organization Security OU Configuration 
+      Parameters:
+      - LoggingAccountEmail
+    - Label:
+        default: Organization Workloads OU Configuration 
+      Parameters:
+      - DevAccountEmail
+      - StagingAccountEmail
+      - ProdAccountEmail
+    - Label:
+        default: Slack Channel Messaging Configuration 
+      Parameters:
+      - SlackWebHookUrl
+    
+    ParameterLabels:
+      LoggingAccountEmail:
+        default: Log Archive Account Email Address
+      DevAccountEmail:
+        default: Dev Account Email Address
+      StagingAccountEmail:
+        default: Staging Account Email Address
+      ProdAccountEmail:
+        default: Prod Account Email Address
+      SlackWebHookUrl:
+        default: Slack WebHook Url
+  
+Resources:
+##########################################################################
+#  Store Parameters                                                      #
+##########################################################################
+
+  LoggingEmail:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Type: String 
+      Description: Email address used to create logging account
+      Value: !Ref LoggingAccountEmail
+      Name: !Sub /org-assemble/emails/logging-${AWS::AccountId}
+
+  DevEmail:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Type: String 
+      Description: Email address used to create dev account
+      Value: !Ref DevAccountEmail
+      Name: !Sub /org-assemble/emails/dev-${AWS::AccountId}
+
+  StagingEmail:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Type: String 
+      Description: Email address used to create staging account
+      Value: !Ref StagingAccountEmail
+      Name: !Sub /org-assemble/emails/staging-${AWS::AccountId}
+
+  ProdEmail:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Type: String 
+      Description: Email address used to create prod account
+      Value: !Ref ProdAccountEmail
+      Name: !Sub /org-assemble/emails/prod-${AWS::AccountId}
+
+  SlackSecret:
+    Type: "AWS::SecretsManager::Secret"
+    Properties:
+      Description: Url for slack webhook 
+      SecretString: !Ref SlackWebHookUrl 
+      Name: /org-assemble/slack/slackUrl
+
+
+##########################################################################
+#  Lambda Roles                                                          #
+##########################################################################
+#todo refactor roles to make more granular, add source condition
+
+  organizationRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument: 
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow 
+            Principal: 
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Description: Allow lambda to execute organization actions
+      Policies:
+        - PolicyName: OrganizationsLambdaPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow 
+                Action: 
+                  - organizations:*
+                  - ssm:*
+                  - events:PutEvents
+                Resource: "*"
+              - Effect: Allow 
+                Action:
+                  - sns:Publish
+                Resource:
+                  - !Ref onFailureTopic
+                  - !Ref onSuccessTopic   
+
+  accountSetupRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument: 
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow 
+            Principal: 
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Description: Allow lambda to baseline and enable logging for an account
+      Policies:
+        - PolicyName: OrganizationsLambdaPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow 
+                Action: 
+                  - organizations:*
+                  - cloudtrail:*
+                  - cloudformation:*
+                  - ssm:*
+                  - events:PutEvents
+                  - iam:GetRole
+                  - iam:CreateServiceLinkedRole
+                Resource: "*"
+              - Effect: Allow 
+                Action:
+                  - sns:Publish
+                Resource:
+                  - !Ref onFailureTopic
+                  - !Ref onSuccessTopic
+              - Effect: Allow 
+                Action:
+                  - s3:GetObject
+                Resource: arn:aws:s3:::testing-org-lambda/*
+
+##########################################################################
+# Lambda Destinations Topics & Function & DLQ                            #
+##########################################################################
+
+  DeadLetterQueue:
+    Type: "AWS::SQS::Queue"
+    Properties:
+        MessageRetentionPeriod: 1209600
+
+  onSuccessTopic:
+    Type: "AWS::SNS::Topic"
+
+  onFailureTopic:
+    Type: "AWS::SNS::Topic"
+    Properties:
+      Subscription:
+        - Endpoint: !GetAtt DeadLetterQueue.Arn
+          Protocol: sqs
+
+  deadLetterPolicy:
+    Type: "AWS::SQS::QueuePolicy"
+    Properties:
+      PolicyDocument: 
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action: sqs:SendMessage
+          Resource: !GetAtt DeadLetterQueue.Arn
+          Principal: "*"
+          Condition:
+            ArnEquals:
+              "aws:SourceArn": !Ref onFailureTopic
+      Queues: 
+        - !Ref DeadLetterQueue
+  
+
+  slackFunction: 
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: slack
+      CodeUri: lambdas/slack.py
+      Handler: slack.lambda_handler
+      Layers:
+        - arn:aws:lambda:us-east-1:113088814899:layer:Klayers-python37-requests:14
+      Policies: 
+        - Version: '2012-10-17'
+          Statement:
+            Action: secretsmanager:*
+            Effect: Allow
+            Resource: "*"
+      Events: 
+        success:
+          Type: SNS
+          Properties:
+            Topic: !Ref onSuccessTopic
+        failure: 
+          Type: SNS
+          Properties:
+            Topic: !Ref onFailureTopic
+
+
+##########################################################################
+#  producer Function                                                     #
+##########################################################################
+
+  producerFunction: 
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: producer
+      CodeUri: lambdas/producer.py
+      Handler: producer.handler
+      Environment:
+        Variables:
+          accountId: !Ref AWS::AccountId
+      Layers:
+        - arn:aws:lambda:us-east-1:113088814899:layer:Klayers-python37-crhelper:4
+      Policies: 
+        - Version: '2012-10-17'
+          Statement:
+            Effect: Allow
+            Resource: '*'
+            Action:
+              - events:PutEvents 
+              - cloudtrail:*
+              - organizations:*
+              - s3:*
+              - iam:GetRole
+              - iam:CreateServiceLinkedRole
+
+
+##########################################################################
+#  createOu Function & Destination & EventBridge Rule                    #
+##########################################################################
+
+  createOuFunction: 
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: createOu
+      CodeUri: lambdas/createOu.py
+      Handler: createOu.lambda_handler
+      Role: !GetAtt organizationRole.Arn
+      EventInvokeConfig: 
+        MaximumRetryAttempts: 2
+        DestinationConfig:
+          OnSuccess:
+            Type: SNS 
+            Destination: !Ref onSuccessTopic
+          OnFailure:
+            Type: SNS 
+            Destination: !Ref onFailureTopic
+      Events: 
+        Trigger:
+          Type: EventBridgeRule
+          Properties:
+            InputPath: $.detail.metadata
+            Pattern:
+              source: 
+                - assembler-producer
+              detail-type: 
+                - org-assemble event
+              detail: 
+                metadata:
+                  status: 
+                    - "SUCCEEDED"
+          
+      
+##########################################################################
+#  Logic Function & Destination & EventBridge Rule               #
+##########################################################################
+  
+  logicFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: logic
+      CodeUri: lambdas/logic.py
+      Handler: logic.lambda_handler
+      Role: !GetAtt organizationRole.Arn
+      ReservedConcurrentExecutions: 1
+      Events: 
+        OuTrigger:
+          Type: EventBridgeRule
+          Properties:
+            InputPath: $.detail
+            Pattern:
+              source: 
+                - aws.organizations
+              detail:
+                userIdentity:
+                  sessionContext:
+                    sessionIssuer:
+                      arn: 
+                        - !GetAtt organizationRole.Arn                
+                eventName: 
+                  - "CreateOrganizationalUnit"
+                eventSource:
+                  - "organizations.amazonaws.com"
+                responseElements:
+                  organizationalUnit:
+                    name:
+                      - "Security"
+        MoveTrigger:
+          Type: EventBridgeRule
+          Properties:
+            InputPath: $.detail
+            Pattern:
+              source: 
+                - aws.organizations
+              detail: 
+                userIdentity:
+                  sessionContext:
+                    sessionIssuer:
+                      arn: 
+                        - !GetAtt organizationRole.Arn 
+                eventName: 
+                  - "MoveAccount"
+                eventSource:
+                  - "organizations.amazonaws.com"
+
+
+##########################################################################
+#  createAccount Function & Destination & EventBridge Rule               #
+##########################################################################
+
+  createAccountFunction: 
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: createAccount
+      CodeUri: lambdas/createAccount.py
+      Handler: createAccount.lambda_handler
+      Role: !GetAtt organizationRole.Arn
+      Events: 
+        Trigger:
+          Type: EventBridgeRule
+          Properties:
+            InputPath: $.detail.data
+            Pattern:
+              source: 
+                - assembler-logic
+              detail-type:
+                - org-assemble event
+              detail:
+                metadata:
+                  operation:
+                    - "checkOu"
+                  status:
+                    - "SUCCEEDED"
+
+##########################################################################
+#  moveAccount Function & Destination & EventBridge Rule                 #
+##########################################################################
+
+  moveAccountFunction: 
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: moveAccount
+      CodeUri: lambdas/moveAccount.py
+      Handler: moveAccount.lambda_handler
+      Role: !GetAtt organizationRole.Arn
+      EventInvokeConfig: 
+        MaximumRetryAttempts: 2
+        DestinationConfig:
+          OnSuccess:
+            Type: SNS 
+            Destination: !Ref onSuccessTopic
+          OnFailure:
+            Type: SNS 
+            Destination: !Ref onFailureTopic
+      Events: 
+        Trigger:
+          Type: EventBridgeRule
+          Properties:
+            InputPath: $.detail.serviceEventDetails.createAccountStatus
+            Pattern:
+              source: 
+                - aws.organizations
+              detail:
+                eventName: 
+                  - "CreateAccountResult"
+                eventSource:
+                  - "organizations.amazonaws.com"
+                serviceEventDetails: 
+                  createAccountStatus:
+                    state:
+                      - "SUCCEEDED"
+
+
+##########################################################################
+#  stackset Function & Destination & EventBridge Rule                    #
+##########################################################################
+
+  stacksetFunction: 
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: stackset
+      CodeUri: lambdas/stackset.py
+      Handler: stackset.lambda_handler
+      MemorySize: 1024
+      Timeout: 400
+      Role: !GetAtt accountSetupRole.Arn  
+      EventInvokeConfig: 
+        MaximumRetryAttempts: 2
+        DestinationConfig:
+          OnSuccess:
+            Type: SNS 
+            Destination: !Ref onSuccessTopic
+          OnFailure:
+            Type: SNS 
+            Destination: !Ref onFailureTopic
+      Events: 
+        LogicTrigger:
+          Type: EventBridgeRule
+          Properties:
+            InputPath: $.detail.data
+            Pattern:
+              source: 
+                - assembler-logic
+              detail-type:
+                - org-assemble event
+              detail:
+                metadata:
+                  operation:
+                    - "checkAccount"
+                  status:
+                    - "SUCCEEDED"
+        SelfTrigger:
+          Type: EventBridgeRule
+          Properties:
+            InputPath: $.detail.data
+            Pattern:
+              source: 
+                - assembler-stackset
+              detail-type:
+                - org-assemble event
+              detail:
+                metadata:
+                  operation:
+                    - "stackset-logBase"
+                  status:
+                    - "SUCCEEDED"
+                
+
+
+##########################################################################
+#  enableLogging Function & Destination & EventBridge Rule               #
+##########################################################################
+
+  enableLoggingFunction: 
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: enableLogging
+      CodeUri: lambdas/enableLogging.py
+      Handler: enableLogging.lambda_handler
+      Role: !GetAtt accountSetupRole.Arn
+      EventInvokeConfig: 
+        MaximumRetryAttempts: 2
+        DestinationConfig:
+          OnSuccess:
+            Type: SNS 
+            Destination: !Ref onSuccessTopic
+          OnFailure:
+            Type: SNS 
+            Destination: !Ref onFailureTopic
+      Events: 
+        Trigger:
+          Type: EventBridgeRule
+          Properties:
+            InputPath: $.detail.data
+            Pattern:
+              source: 
+                - assembler-stackset
+              detail-type:
+                - org-assemble event
+              detail:
+                metadata:
+                  operation:
+                    - "stackset-accountBase"
+                  status:
+                    - "SUCCEEDED"
+
+  TriggerProducer:
+    DependsOn: 
+      - createOuFunctionTriggerPermission
+      - createAccountFunctionTriggerPermission
+      - moveAccountFunctionTriggerPermission
+      - logicFunctionMoveTriggerPermission
+      - logicFunctionOuTriggerPermission
+      - stacksetFunctionLogicTriggerPermission
+      - stacksetFunctionSelfTriggerPermission
+      - enableLoggingFunctionTriggerPermission
+    Type: "Custom::TriggerProducer"
+    Properties:
+      ServiceToken: !GetAtt producerFunction.Arn

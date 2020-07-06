@@ -3,11 +3,13 @@
 .DS_Store
 .DS_Store?
 
-# SAM generated config file #
+# SAM generated config & build files #
 ######################
 samconfig.toml
+.aws-sam/
 
 
 # test events folder #
 ######################
 events/
+event.json

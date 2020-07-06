@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 
-Description: Baseline for new log accounts - cloudtrail bucket and policy, server access logs bucket
+Description: Baseline for new log accounts - cloudtrail bucket and policy, server access logs bucket, and security reports bucket
   
 Resources:
   stacksetBucketsFunction:
@@ -57,7 +57,24 @@ Resources:
       accountId: !Ref "AWS::AccountId"
       storageBucket: !Ref cloudtrailBucket
       logBucket: !Ref s3AccessBucket
+      reportsBucket: !Ref securityReportsBucket
   
+
+  securityReportsBucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      BucketName: !Sub security-reports-${AWS::AccountId} 
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: True
+        BlockPublicPolicy: True
+        IgnorePublicAcls: True
+        RestrictPublicBuckets: True
+
+
   s3AccessBucket:
     Type: "AWS::S3::Bucket"
     Properties:

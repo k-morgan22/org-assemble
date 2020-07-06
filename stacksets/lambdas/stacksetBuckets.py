@@ -16,7 +16,8 @@ def delete(event, context):
   accountId = event['ResourceProperties']['accountId']
   storageBucketName = event['ResourceProperties']['storageBucket']
   logBucketName = event['ResourceProperties']['logBucket']
-  emptyList = [storageBucketName, logBucketName]
+  reportsBucketName = event['ResourceProperties']['reportsBucket']
+  emptyList = [storageBucketName, logBucketName, reportsBucketName]
 
   for bucketName in emptyList:
     bucket = s3.Bucket(bucketName)

@@ -234,7 +234,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: slack
-      CodeUri: lambdas/slack.py
+      CodeUri: lambdas/slack
       Handler: slack.lambda_handler
       Layers:
         - arn:aws:lambda:us-east-1:113088814899:layer:Klayers-python37-requests:14
@@ -263,7 +263,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: producer
-      CodeUri: lambdas/producer.py
+      CodeUri: lambdas/producer
       Handler: producer.handler
       Environment:
         Variables:
@@ -292,7 +292,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: createOu
-      CodeUri: lambdas/createOu.py
+      CodeUri: lambdas/createOu
       Handler: createOu.lambda_handler
       Role: !GetAtt organizationRole.Arn
       EventInvokeConfig: 
@@ -328,7 +328,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: logic
-      CodeUri: lambdas/logic.py
+      CodeUri: lambdas/logic
       Handler: logic.lambda_handler
       Role: !GetAtt organizationRole.Arn
       ReservedConcurrentExecutions: 1
@@ -381,7 +381,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: createAccount
-      CodeUri: lambdas/createAccount.py
+      CodeUri: lambdas/createAccount
       Handler: createAccount.lambda_handler
       Role: !GetAtt organizationRole.Arn
       Events: 
@@ -409,7 +409,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: moveAccount
-      CodeUri: lambdas/moveAccount.py
+      CodeUri: lambdas/moveAccount
       Handler: moveAccount.lambda_handler
       Role: !GetAtt organizationRole.Arn
       EventInvokeConfig: 
@@ -448,7 +448,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: stackset
-      CodeUri: lambdas/stackset.py
+      CodeUri: lambdas/stackset
       Handler: stackset.lambda_handler
       MemorySize: 1024
       Timeout: 400
@@ -504,7 +504,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: enableLogging
-      CodeUri: lambdas/enableLogging.py
+      CodeUri: lambdas/enableLogging
       Handler: enableLogging.lambda_handler
       Role: !GetAtt accountSetupRole.Arn
       EventInvokeConfig: 

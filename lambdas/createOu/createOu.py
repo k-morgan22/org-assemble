@@ -33,10 +33,10 @@ def putParameter(prefix, description, idValue):
     Type = 'String'
   )
 
-# pre-handler global
-masterId = grabMasterId()
 
 def lambda_handler(event, context):
+
+  masterId = grabMasterId()
 
   putParameter('/org-assemble/orgIds/master-', 'Master Org Id', masterId )
 

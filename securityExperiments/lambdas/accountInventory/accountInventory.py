@@ -1,5 +1,5 @@
 import boto3
-import pandas as pd
+# import pandas as pd
 from datetime import datetime
 from io import StringIO
 import logging

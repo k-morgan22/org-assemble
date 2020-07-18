@@ -3,6 +3,11 @@
 .DS_Store
 .DS_Store?
 
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+
+
 # SAM generated config & build files #
 ######################
 samconfig.toml
@@ -13,3 +18,8 @@ samconfig.toml
 ######################
 events/
 event.json
+
+
+# Unit test / coverage reports
+.pytest_cache/
+.vscode
